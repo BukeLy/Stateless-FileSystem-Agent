@@ -13,12 +13,11 @@ RUN uv pip install --system boto3 claude-agent-sdk
 COPY *.py ./
 RUN chmod 644 *.py
 
-# Create /tmp/.claude directory and copy settings
-RUN mkdir -p /tmp/.claude/projects /tmp/.claude/debug /tmp/.claude/todos
-COPY claude-settings.json /tmp/.claude/settings.json
-RUN chmod -R 777 /tmp/.claude
+# Create ~/.claude and ~/.aws directories and ensure writable
+RUN mkdir -p /root/.claude/projects /root/.claude/debug /root/.claude/todos /root/.aws && \
+    touch /root/.claude.json && \
+    chmod -R 777 /root/.claude /root/.claude.json /root/.aws
 
 ENV HOME=/root
-ENV CLAUDE_CONFIG_DIR=/tmp/.claude
 
 CMD ["handler.lambda_handler"]

@@ -1,8 +1,9 @@
 """Claude Agent SDK wrapper for Lambda environment.
 
-Bedrock 配置通过 settings.json 注入，由 Dockerfile 复制到 CLAUDE_CONFIG_DIR。
+Uses SDK's built-in types directly - no custom dataclass needed.
 """
 import os
+from pathlib import Path
 from typing import Optional
 
 from claude_agent_sdk import (
@@ -12,6 +13,54 @@ from claude_agent_sdk import (
     ResultMessage,
     TextBlock,
 )
+
+
+def setup_bedrock_profile():
+    """Create AWS credentials file with bedrock profile.
+
+    This keeps Lambda's execution role credentials intact for DynamoDB/S3,
+    while providing separate credentials for Claude Code to use Bedrock.
+
+    Lambda only allows writes to /tmp, so we configure:
+    - CLAUDE_CONFIG_DIR=/tmp/.claude-code (for Claude Code config)
+    - AWS_SHARED_CREDENTIALS_FILE=/tmp/.aws/credentials (for AWS profile)
+    """
+    # Setup /tmp directories for Lambda
+    aws_dir = Path('/tmp/.aws')
+    claude_dir = Path('/tmp/.claude-code')
+    aws_dir.mkdir(exist_ok=True)
+    claude_dir.mkdir(exist_ok=True)
+
+    # Create AWS credentials file with bedrock profile
+    bedrock_key = os.environ.get('BEDROCK_ACCESS_KEY_ID', '')
+    bedrock_secret = os.environ.get('BEDROCK_SECRET_ACCESS_KEY', '')
+
+    credentials_content = f"""[bedrock]
+aws_access_key_id = {bedrock_key}
+aws_secret_access_key = {bedrock_secret}
+region = us-east-1
+"""
+    credentials_file = aws_dir / 'credentials'
+    credentials_file.write_text(credentials_content)
+
+    # Configure Claude Code to use /tmp
+    os.environ['CLAUDE_CONFIG_DIR'] = str(claude_dir)
+    os.environ['AWS_SHARED_CREDENTIALS_FILE'] = str(credentials_file)
+    os.environ['DISABLE_AUTOUPDATER'] = '1'
+    os.environ['DISABLE_TELEMETRY'] = '1'
+
+    # Set Bedrock model ARNs
+    os.environ['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = 'arn:aws:bedrock:us-east-1:287422227648:application-inference-profile/0toltxz33ekq'
+    os.environ['ANTHROPIC_DEFAULT_SONNET_MODEL'] = 'arn:aws:bedrock:us-east-1:287422227648:application-inference-profile/p5aqcahes47k'
+    os.environ['ANTHROPIC_DEFAULT_OPUS_4_5_MODEL'] = 'arn:aws:bedrock:us-east-1:287422227648:application-inference-profile/6u1o6pf6hqm4'
+    os.environ['ANTHROPIC_DEFAULT_OPUS_MODEL'] = os.environ['ANTHROPIC_DEFAULT_OPUS_4_5_MODEL']
+
+    print(f"Bedrock profile created at {credentials_file}")
+    print(f"Claude config dir: {claude_dir}")
+
+
+# Setup on module load
+setup_bedrock_profile()
 
 
 SYSTEM_PROMPT = """You are a helpful AI assistant running in a serverless environment.
@@ -71,6 +120,9 @@ async def process_message(
     error_message: Optional[str] = None
 
     try:
+        # Use bedrock profile for Claude Code
+        os.environ['AWS_PROFILE'] = 'bedrock'
+
         async for message in query(prompt=user_message, options=options):
             # Handle AssistantMessage - extract text from content blocks
             if isinstance(message, AssistantMessage):
@@ -90,6 +142,10 @@ async def process_message(
     except Exception as e:
         is_error = True
         error_message = str(e)
+    finally:
+        # Restore default profile (Lambda execution role)
+        if 'AWS_PROFILE' in os.environ:
+            del os.environ['AWS_PROFILE']
 
     return {
         'response': '\n'.join(response_texts) if response_texts else '',
