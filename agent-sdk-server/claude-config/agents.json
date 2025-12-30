@@ -1,0 +1,13 @@
+{
+  "aws-support": {
+    "description": "AWS cloud architecture and troubleshooting specialist. Use this agent for AWS service issues, best practices, architecture guidance, and documentation lookup.",
+    "prompt_file": "agents/aws-support.md",
+    "tools": [
+      "mcp__aws-knowledge-mcp-server__aws___search_documentation",
+      "mcp__aws-knowledge-mcp-server__aws___get_documentation_content",
+      "mcp__awslabs.aws-documentation-mcp-server__search_documentation",
+      "mcp__awslabs.aws-documentation-mcp-server__read_documentation"
+    ],
+    "model": "haiku"
+  }
+}
