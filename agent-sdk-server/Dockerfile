@@ -24,5 +24,7 @@ RUN mkdir -p /root/.claude/projects /root/.claude/debug /root/.claude/todos /roo
     chmod -R 777 /root/.claude /root/.claude.json /root/.aws
 
 ENV HOME=/root
+# Redirect cache to /tmp (Lambda only allows writes to /tmp)
+ENV XDG_CACHE_HOME=/tmp/.cache
 
 CMD ["handler.lambda_handler"]
