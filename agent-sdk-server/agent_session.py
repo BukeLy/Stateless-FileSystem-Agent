@@ -158,7 +158,7 @@ async def process_message(
             #'Bash', 'Read', 'Write', 'Edit',
             #'Glob', 'Grep', 'WebFetch',
             'Task',
-            'Skills'  # Required for SubAgent invocation
+            'Skill'  # Required for SubAgent invocation
         ],
         mcp_servers=mcp_servers if mcp_servers else None,
         agents=agents if agents else None,
