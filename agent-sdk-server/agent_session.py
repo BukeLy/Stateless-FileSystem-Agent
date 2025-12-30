@@ -2,33 +2,38 @@
 
 Uses SDK's built-in types directly - no custom dataclass needed.
 """
+import json
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
 from claude_agent_sdk import (
     query,
     ClaudeAgentOptions,
+    AgentDefinition,
     AssistantMessage,
     ResultMessage,
     TextBlock,
 )
 
+# Config source (in Docker image) and destination (Lambda writable)
+CONFIG_SRC = Path('/opt/claude-config')
+CONFIG_DST = Path('/tmp/.claude-code')
 
-def setup_bedrock_profile():
-    """Create AWS credentials file with bedrock profile.
 
-    This keeps Lambda's execution role credentials intact for DynamoDB/S3,
-    while providing separate credentials for Claude Code to use Bedrock.
+def setup_lambda_environment():
+    """Setup Lambda environment for Claude Agent SDK.
 
-    Note: Static config (CLAUDE_CONFIG_DIR, model ARNs, etc.) are set in
-    template.yaml. Only dynamic credential file creation happens here.
+    1. Create AWS credentials file with bedrock profile (for cross-account Bedrock access)
+    2. Copy config files from /opt/claude-config to /tmp/.claude-code
+
+    Note: Static config (CLAUDE_CONFIG_DIR, model ARNs, etc.) are set in template.yaml.
     """
     # Setup /tmp directories for Lambda
     aws_dir = Path('/tmp/.aws')
-    claude_dir = Path('/tmp/.claude-code')
     aws_dir.mkdir(exist_ok=True)
-    claude_dir.mkdir(exist_ok=True)
+    CONFIG_DST.mkdir(exist_ok=True)
 
     # Create AWS credentials file with bedrock profile
     bedrock_key = os.environ.get('BEDROCK_ACCESS_KEY_ID', '')
@@ -41,18 +46,69 @@ region = us-east-1
 """
     credentials_file = aws_dir / 'credentials'
     credentials_file.write_text(credentials_content)
-    credentials_file.chmod(0o600)  # Restrict file permissions
+    credentials_file.chmod(0o600)
+
+    # Copy pre-configured files from Docker image to Lambda writable /tmp
+    if CONFIG_SRC.exists():
+        for item in CONFIG_SRC.iterdir():
+            dst = CONFIG_DST / item.name
+            if item.is_dir():
+                shutil.copytree(item, dst, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dst)
+        print(f"Config copied from {CONFIG_SRC} to {CONFIG_DST}")
 
     print(f"Bedrock profile created at {credentials_file}")
 
 
+def load_mcp_servers() -> dict:
+    """Load MCP servers configuration from mcp.json."""
+    mcp_file = CONFIG_DST / 'mcp.json'
+    if mcp_file.exists():
+        with open(mcp_file) as f:
+            config = json.load(f)
+            return config.get('mcpServers', {})
+    return {}
+
+
+def load_agents() -> dict[str, AgentDefinition]:
+    """Load SubAgent definitions from agents.json + prompt files."""
+    agents_config = CONFIG_DST / 'agents.json'
+    if not agents_config.exists():
+        return {}
+
+    with open(agents_config) as f:
+        config = json.load(f)
+
+    agents = {}
+    for name, definition in config.items():
+        # Load prompt from external .md file
+        prompt_file = CONFIG_DST / definition.get('prompt_file', '')
+        prompt = ''
+        if prompt_file.exists():
+            prompt = prompt_file.read_text()
+
+        agents[name] = AgentDefinition(
+            description=definition.get('description', ''),
+            prompt=prompt,
+            tools=definition.get('tools'),
+            model=definition.get('model'),
+        )
+
+    return agents
+
+
+def load_system_prompt() -> str:
+    """Load system prompt from system_prompt.md."""
+    prompt_file = CONFIG_DST / 'system_prompt.md'
+    if prompt_file.exists():
+        return prompt_file.read_text()
+    # Fallback default
+    return "You are a helpful AI assistant. Be concise and helpful in your responses."
+
+
 # Setup on module load
-setup_bedrock_profile()
-
-
-SYSTEM_PROMPT = """You are a helpful AI assistant running in a serverless environment.
-You can help users with various tasks including coding, analysis, and general questions.
-Be concise and helpful in your responses."""
+setup_lambda_environment()
 
 
 async def process_message(
@@ -86,17 +142,26 @@ async def process_message(
     # Ensure working directory exists
     os.makedirs(cwd, exist_ok=True)
 
+    # Load config from external files
+    mcp_servers = load_mcp_servers()
+    agents = load_agents()
+    system_prompt = load_system_prompt()
+
     options = ClaudeAgentOptions(
         cwd=cwd,
         resume=session_id,  # None = new session, str = resume existing
         model=model,
         permission_mode='bypassPermissions',  # Lambda has no interactive terminal
         max_turns=max_turns,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         allowed_tools=[
-            'Bash', 'Read', 'Write', 'Edit',
-            'Glob', 'Grep', 'WebFetch',
+            #'Bash', 'Read', 'Write', 'Edit',
+            #'Glob', 'Grep', 'WebFetch',
+            'Task',
+            'Skills'  # Required for SubAgent invocation
         ],
+        mcp_servers=mcp_servers if mcp_servers else None,
+        agents=agents if agents else None,
     )
 
     response_texts: list[str] = []
