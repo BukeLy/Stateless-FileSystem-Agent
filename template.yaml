@@ -66,13 +66,25 @@ Resources:
         Size: 2048
       Environment:
         Variables:
+          # App config
           SESSION_BUCKET: !Ref SessionBucket
           SESSION_TABLE: !Ref SessionTable
           PROJECT_PATH: '-tmp-workspace'
           SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
+          # Bedrock credentials (runtime injection)
           CLAUDE_CODE_USE_BEDROCK: '1'
           BEDROCK_ACCESS_KEY_ID: !Ref BedrockAccessKeyId
           BEDROCK_SECRET_ACCESS_KEY: !Ref BedrockSecretAccessKey
+          # Claude Code config (static)
+          CLAUDE_CONFIG_DIR: '/tmp/.claude-code'
+          AWS_SHARED_CREDENTIALS_FILE: '/tmp/.aws/credentials'
+          DISABLE_AUTOUPDATER: '1'
+          DISABLE_TELEMETRY: '1'
+          # Bedrock model ARNs
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: '${BedrockHaikuModelArn}'
+          ANTHROPIC_DEFAULT_SONNET_MODEL: '${BedrockSonnetModelArn}'
+          ANTHROPIC_DEFAULT_OPUS_4_5_MODEL: '${BedrockOpusModelArn}'
+          ANTHROPIC_DEFAULT_OPUS_MODEL: '${BedrockOpusModelArn}'
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref SessionBucket
