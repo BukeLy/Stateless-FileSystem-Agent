@@ -10,5 +10,6 @@ wheels/
 .venv
 
 # AWS SAM
-.aws-sam/
+.aws-sam/*
+.aws-sam
 agent-sdk-server/claude-settings.json
