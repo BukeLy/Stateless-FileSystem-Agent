@@ -11,3 +11,4 @@ wheels/
 
 # AWS SAM
 .aws-sam/
+agent-sdk-server/claude-settings.json
