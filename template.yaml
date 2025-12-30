@@ -6,12 +6,6 @@ Parameters:
   TelegramBotToken:
     Type: String
     NoEcho: true
-  BedrockAccessKeyId:
-    Type: String
-    NoEcho: true
-  BedrockSecretAccessKey:
-    Type: String
-    NoEcho: true
   AuthToken:
     Type: String
     Default: 'change-me-in-production'
@@ -70,9 +64,6 @@ Resources:
           SESSION_TABLE: !Ref SessionTable
           PROJECT_PATH: '-tmp-workspace'
           SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
-          CLAUDE_CODE_USE_BEDROCK: '1'
-          BEDROCK_ACCESS_KEY_ID: !Ref BedrockAccessKeyId
-          BEDROCK_SECRET_ACCESS_KEY: !Ref BedrockSecretAccessKey
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref SessionBucket
