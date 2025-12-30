@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: OmniCloud Agent - Claude Agent SDK based Telegram Bot
+
+Parameters:
+  TelegramBotToken:
+    Type: String
+    NoEcho: true
+  BedrockAccessKeyId:
+    Type: String
+    NoEcho: true
+  BedrockSecretAccessKey:
+    Type: String
+    NoEcho: true
+  AuthToken:
+    Type: String
+    Default: 'change-me-in-production'
+    NoEcho: true
+
+Globals:
+  Function:
+    Timeout: 900
+    MemorySize: 512
+    Architectures:
+      - arm64
+
+Resources:
+  # S3 Bucket for session files
+  SessionBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'omnicloud-agent-sessions-${AWS::AccountId}'
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldSessions
+            Status: Enabled
+            ExpirationInDays: 30
+
+  # DynamoDB Table for session mapping
+  SessionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: omnicloud-agent-sessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: session_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # Agent Server Lambda (Container)
+  AgentServerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      DockerTag: agent-server
+      DockerContext: ./agent-sdk-server
+      Dockerfile: Dockerfile
+    Properties:
+      PackageType: Image
+      MemorySize: 2048
+      EphemeralStorage:
+        Size: 2048
+      Environment:
+        Variables:
+          SESSION_BUCKET: !Ref SessionBucket
+          SESSION_TABLE: !Ref SessionTable
+          PROJECT_PATH: '-tmp-workspace'
+          SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
+          CLAUDE_CODE_USE_BEDROCK: '1'
+          AWS_ACCESS_KEY_ID: !Ref BedrockAccessKeyId
+          AWS_SECRET_ACCESS_KEY: !Ref BedrockSecretAccessKey
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref SessionBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionTable
+      FunctionUrlConfig:
+        AuthType: NONE
+
+  # SDK Client Lambda (ZIP)
+  SdkClientFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./agent-sdk-client
+      Handler: handler.lambda_handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+          AGENT_SERVER_URL: !GetAtt AgentServerFunctionUrl.FunctionUrl
+          SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
+      Events:
+        Webhook:
+          Type: HttpApi
+          Properties:
+            Path: /webhook
+            Method: POST
+
+Outputs:
+  WebhookUrl:
+    Description: Telegram Webhook URL
+    Value: !Sub 'https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook'
+  AgentServerUrl:
+    Description: Agent Server Function URL
+    Value: !GetAtt AgentServerFunctionUrl.FunctionUrl
