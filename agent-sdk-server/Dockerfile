@@ -16,6 +16,7 @@ RUN chmod 644 *.py
 # Copy config files (MCP servers, SubAgents) to /opt (read-only at runtime)
 # setup_lambda_environment() will copy to /tmp/.claude-code at runtime
 COPY claude-config/ /opt/claude-config/
+RUN chmod -R 755 /opt/claude-config/
 
 # Create ~/.claude and ~/.aws directories and ensure writable
 RUN mkdir -p /root/.claude/projects /root/.claude/debug /root/.claude/todos /root/.aws && \

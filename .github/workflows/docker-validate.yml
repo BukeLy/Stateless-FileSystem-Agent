@@ -1,0 +1,39 @@
+name: Docker Build Validation
+
+on:
+  push:
+    paths:
+      - 'agent-sdk-server/Dockerfile'
+  pull_request:
+    paths:
+      - 'agent-sdk-server/Dockerfile'
+
+jobs:
+  validate-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and validate file permissions
+        run: |
+          cd agent-sdk-server
+          docker build -t agent-sdk-server:test .
+
+          # Simulate Lambda init - copy from /opt to /tmp
+          docker run --rm agent-sdk-server:test python -c "
+          import shutil
+          from pathlib import Path
+
+          src = Path('/opt/claude-config')
+          dst = Path('/tmp/.claude-code')
+          dst.mkdir(exist_ok=True)
+
+          for item in src.iterdir():
+              target = dst / item.name
+              if item.is_dir():
+                  shutil.copytree(item, target, dirs_exist_ok=True)
+              else:
+                  shutil.copy2(item, target)
+
+          print('Lambda init simulation: OK')
+          "
