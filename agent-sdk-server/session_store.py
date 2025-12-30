@@ -1,4 +1,5 @@
 """Session storage: S3 + DynamoDB synchronization."""
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -25,8 +26,8 @@ class SessionStore:
         self.dynamodb = boto3.resource('dynamodb').Table(table)
         self.bucket = bucket
         self.project_path = project_path
-        self.home = Path.home()
-        self.claude_dir = self.home / '.claude'
+        # Use CLAUDE_CONFIG_DIR if set (for Lambda), otherwise default to ~/.claude
+        self.claude_dir = Path(os.environ.get('CLAUDE_CONFIG_DIR', str(Path.home() / '.claude')))
 
     def get_session_id(
         self,

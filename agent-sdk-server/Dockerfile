@@ -3,18 +3,20 @@ FROM public.ecr.aws/lambda/python:3.12-arm64
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install Claude Code CLI
-RUN uv pip install --system claude-code-cli
+# Install Claude Code CLI (npm package, requires nodejs)
+RUN dnf install -y nodejs npm && npm install -g @anthropic-ai/claude-code
 
-# Copy project files
-COPY pyproject.toml .
+# Install Python dependencies
+RUN uv pip install --system boto3 claude-agent-sdk
+
+# Copy Lambda code and ensure readable
 COPY *.py ./
+RUN chmod 644 *.py
 
-# Install dependencies
-RUN uv pip install --system .
-
-# Create ~/.claude directories for session files
-RUN mkdir -p /root/.claude/projects /root/.claude/debug /root/.claude/todos
+# Create ~/.claude and ~/.aws directories and ensure writable
+RUN mkdir -p /root/.claude/projects /root/.claude/debug /root/.claude/todos /root/.aws && \
+    touch /root/.claude.json && \
+    chmod -R 777 /root/.claude /root/.claude.json /root/.aws
 
 ENV HOME=/root
 
