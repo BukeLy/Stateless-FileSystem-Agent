@@ -9,11 +9,11 @@ manifest_hash = ""
 packagetype = "Zip"
 functions = ["SdkClientFunction"]
 
-[function_build_definitions.245c5629-0522-450b-ba8a-c2768bf0a6c5]
+[function_build_definitions.86966283-77a1-406d-81b3-f6e9f917ab7c]
 packagetype = "Image"
 functions = ["AgentServerFunction"]
 
-[function_build_definitions.245c5629-0522-450b-ba8a-c2768bf0a6c5.metadata]
+[function_build_definitions.86966283-77a1-406d-81b3-f6e9f917ab7c.metadata]
 DockerTag = "agent-server"
 DockerContext = "/Users/chengjie/Projects/OmniCloud-Ops-Agent/agent-sdk-server"
 Dockerfile = "Dockerfile"
