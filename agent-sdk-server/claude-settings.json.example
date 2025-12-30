@@ -1,0 +1,19 @@
+{
+  "env": {
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "AWS_ACCESS_KEY_ID": "your-bedrock-access-key-id",
+    "AWS_SECRET_ACCESS_KEY": "your-bedrock-secret-access-key",
+    "AWS_REGION": "us-east-1",
+    "ANTHROPIC_MODEL": "arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:application-inference-profile/YOUR_SONNET_PROFILE_ID",
+    "ANTHROPIC_SMALL_FAST_MODEL": "arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:application-inference-profile/YOUR_HAIKU_PROFILE_ID",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:application-inference-profile/YOUR_HAIKU_PROFILE_ID",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:application-inference-profile/YOUR_SONNET_PROFILE_ID",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:application-inference-profile/YOUR_OPUS_PROFILE_ID",
+    "ANTHROPIC_DEFAULT_OPUS_4_5_MODEL": "arn:aws:bedrock:us-east-1:YOUR_ACCOUNT_ID:application-inference-profile/YOUR_OPUS_PROFILE_ID",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "4096",
+    "MAX_THINKING_TOKENS": "1024",
+    "DISABLE_AUTOUPDATER": "1",
+    "DISABLE_TELEMETRY": "1"
+  },
+  "model": "haiku"
+}

@@ -11,3 +11,6 @@ wheels/
 
 # AWS SAM
 .aws-sam/
+
+# Claude Code settings (contains AK/SK)
+agent-sdk-server/claude-settings.json
