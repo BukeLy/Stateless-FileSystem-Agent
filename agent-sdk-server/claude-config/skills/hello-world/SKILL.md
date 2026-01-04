@@ -1,23 +1,8 @@
 ---
-description: Hello World 示例 Skill，演示如何读取 reference 文件并执行脚本
+description: Hello World 示例 Skill，执行脚本输出消息
 ---
 
-# Hello World Skill
+执行以下操作：
 
-这是一个示例 Skill，用于演示 Skills 的基本结构。
-
-## 使用方法
-
-1. 读取 `reference/message.json` 获取消息内容
-2. 运行 `scripts/print_message.py` 输出所有字符
-
-## 文件结构
-
-```
-hello-world/
-├── SKILL.md
-├── reference/
-│   └── message.json
-└── scripts/
-    └── print_message.py
-```
+1. 使用 Bash 工具运行脚本：`python3 scripts/print_message.py`
+2. 将脚本的输出结果直接返回给用户
