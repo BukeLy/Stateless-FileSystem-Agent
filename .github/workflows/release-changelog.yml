@@ -32,7 +32,7 @@ jobs:
       - name: Update Changelog with Claude Code
         uses: anthropics/claude-code-action@v1
         env:
-          ANTHROPIC_DEFAULT_SONNET_MODEL: arn:aws:bedrock:us-east-1:287422227648:application-inference-profile/w13qb7e2nmkr
+          ANTHROPIC_DEFAULT_SONNET_MODEL: arn:aws:bedrock:us-east-1:287422227648:application-inference-profile/0toltxz33ekq
         with:
           use_bedrock: "true"
           show_full_output: "true"
