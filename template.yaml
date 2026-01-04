@@ -164,6 +164,12 @@ Resources:
           AGENT_SERVER_URL: !GetAtt AgentServerFunctionUrl.FunctionUrl
           SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
           QUEUE_URL: !Ref TaskQueue
+          SESSION_TABLE: !Ref SessionTable
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt TaskQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionTable
       Events:
         SQSEvent:
           Type: SQS

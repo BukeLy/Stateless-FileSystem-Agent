@@ -55,6 +55,7 @@ async def process_message(message_data: dict) -> None:
                     'thread_id': str(message.message_thread_id) if message.message_thread_id else None,
                 },
             )
+            response.raise_for_status()
             result = response.json()
 
     except httpx.TimeoutException:
