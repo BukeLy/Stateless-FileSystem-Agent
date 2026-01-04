@@ -14,3 +14,7 @@ wheels/
 .aws-sam
 agent-sdk-server/claude-settings.json
 .DS_Store
+
+# Sensitive configuration files
+samconfig.toml
+samconfig*.toml
