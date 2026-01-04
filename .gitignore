@@ -13,3 +13,4 @@ wheels/
 .aws-sam/*
 .aws-sam
 agent-sdk-server/claude-settings.json
+.DS_Store
