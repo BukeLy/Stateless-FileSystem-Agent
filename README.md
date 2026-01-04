@@ -17,14 +17,16 @@ A Serverless AI Agent system built on Claude Agent SDK, implementing stateful co
 ## Architecture
 
 ```
-Telegram User → Bot API → API Gateway → sdk-client Lambda
-                                             ↓
-                             API Gateway → agent-container Lambda
-                                             ↓
-                             DynamoDB (Session mapping) + S3 (Session files) + Bedrock (Claude)
+Telegram User → Bot API → API Gateway → Producer Lambda → SQS Queue → Consumer Lambda
+                                              ↓                            ↓
+                                        Return 200              agent-server Lambda
+                                        immediately                        ↓
+                                              DynamoDB (Session mapping) + S3 (Session files) + Bedrock (Claude)
 ```
 
-**Core Design**: Uses the Hybrid Sessions pattern recommended by Claude Agent SDK
+**Core Design**:
+- Uses the Hybrid Sessions pattern recommended by Claude Agent SDK
+- **SQS Async Architecture**: Producer returns 200 immediately to Telegram, Consumer processes requests asynchronously
 
 ## Features
 
@@ -34,6 +36,7 @@ Telegram User → Bot API → API Gateway → sdk-client Lambda
 - **Skills Support**: Reusable skill modules with hello-world example
 - **MCP Integration**: Support for HTTP and local command-based MCP servers
 - **Auto Cleanup**: 25-day TTL + S3 lifecycle management
+- **SQS Queue**: Async processing + auto retry + dead letter queue
 - **Quick Start**: Provides example Skill/SubAgent/MCP configurations for adding other components
 
 ## Project Structure
@@ -51,7 +54,9 @@ Telegram User → Bot API → API Gateway → sdk-client Lambda
 │       └── system_prompt.md   # System Prompt
 │
 ├── agent-sdk-client/          # Telegram Client (ZIP Deployment)
-│   └── handler.py             # Webhook Handler
+│   ├── handler.py             # Producer: Webhook receiver, writes to SQS
+│   ├── consumer.py            # Consumer: SQS consumer, calls Agent
+│   └── config.py              # Configuration management
 │
 ├── docs/                      # Documentation
 │   └── anthropic-agent-sdk-official/  # SDK Official Docs Reference
@@ -93,15 +98,31 @@ sam deploy --guided
 | `BEDROCK_SECRET_ACCESS_KEY` | Bedrock secret key |
 | `SDK_CLIENT_AUTH_TOKEN` | Internal authentication token |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+| `QUEUE_URL` | SQS queue URL (auto-created) |
 
 ## Tech Stack
 
 - **Runtime**: Python 3.12 + Claude Agent SDK
 - **Computing**: AWS Lambda (ARM64)
 - **Storage**: S3 + DynamoDB
+- **Message Queue**: AWS SQS (Standard Queue + DLQ)
 - **AI**: Claude via Amazon Bedrock
 - **Orchestration**: AWS SAM
 - **Integration**: Telegram Bot API + MCP
+
+## SQS Async Architecture
+
+**Problem Solved**: Telegram Webhook times out and retries after ~27s, while Agent processing may take 30-70s, causing duplicate responses.
+
+**Solution**:
+1. Producer Lambda receives Webhook, writes to SQS, returns 200 immediately (<1s)
+2. Consumer Lambda consumes from SQS, calls Agent Server, sends response to Telegram
+3. Retry 3 times on failure, then move to dead letter queue (DLQ)
+
+**Queue Configuration**:
+- VisibilityTimeout: 900s (= Lambda timeout)
+- maxReceiveCount: 3 (retry 3 times)
+- DLQ Alarm: CloudWatch alarm triggers when messages enter DLQ
 
 ## Session Management
 
@@ -181,14 +202,16 @@ MIT
 ## 架构
 
 ```
-Telegram User → Bot API → API Gateway → sdk-client Lambda
-                                             ↓
-                             API Gateway → agent-container Lambda
-                                             ↓
-                             DynamoDB (Session映射) + S3 (Session文件) + Bedrock (Claude)
+Telegram User → Bot API → API Gateway → Producer Lambda → SQS Queue → Consumer Lambda
+                                              ↓                            ↓
+                                        立即返回 200              agent-server Lambda
+                                                                        ↓
+                                              DynamoDB (Session映射) + S3 (Session文件) + Bedrock (Claude)
 ```
 
-**核心设计**：采用 Claude Agent SDK 官方推荐的 Hybrid Sessions 模式
+**核心设计**：
+- 采用 Claude Agent SDK 官方推荐的 Hybrid Sessions 模式
+- **SQS 异步架构**：Producer 立即返回 200 给 Telegram，Consumer 异步处理请求
 
 ## 特性
 
@@ -198,6 +221,7 @@ Telegram User → Bot API → API Gateway → sdk-client Lambda
 - **Skills 支持**：可复用的技能模块，包含 hello-world 示例
 - **MCP 集成**：支持 HTTP 和本地命令类型的 MCP 服务器
 - **自动清理**：25天 TTL + S3 生命周期管理
+- **SQS 队列**：异步处理 + 自动重试 + 死信队列
 - **快速开始**：提供示例 Skill/SubAgent/MCP 配置，可按照示例添加其他组件
 
 ## 项目结构
@@ -215,7 +239,9 @@ Telegram User → Bot API → API Gateway → sdk-client Lambda
 │       └── system_prompt.md   # 系统提示
 │
 ├── agent-sdk-client/          # Telegram客户端 (ZIP部署)
-│   └── handler.py             # Webhook处理
+│   ├── handler.py             # Producer: Webhook接收，写入SQS
+│   ├── consumer.py            # Consumer: SQS消费，调用Agent
+│   └── config.py              # 配置管理
 │
 ├── docs/                      # 文档
 │   └── anthropic-agent-sdk-official/  # SDK官方文档参考
@@ -257,15 +283,31 @@ sam deploy --guided
 | `BEDROCK_SECRET_ACCESS_KEY` | Bedrock密钥 |
 | `SDK_CLIENT_AUTH_TOKEN` | 内部认证Token |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+| `QUEUE_URL` | SQS队列URL（自动创建） |
 
 ## 技术栈
 
 - **Runtime**: Python 3.12 + Claude Agent SDK
 - **计算**: AWS Lambda (ARM64)
 - **存储**: S3 + DynamoDB
+- **消息队列**: AWS SQS (Standard Queue + DLQ)
 - **AI**: Claude via Amazon Bedrock
 - **编排**: AWS SAM
 - **集成**: Telegram Bot API + MCP
+
+## SQS 异步架构
+
+**解决的问题**：Telegram Webhook 在 ~27s 后超时重试，而 Agent 处理可能需要 30-70s，导致重复响应。
+
+**解决方案**：
+1. Producer Lambda 接收 Webhook，写入 SQS，立即返回 200（<1s）
+2. Consumer Lambda 从 SQS 消费，调用 Agent Server，发送响应给 Telegram
+3. 失败重试 3 次，最终失败进入死信队列（DLQ）
+
+**队列配置**：
+- VisibilityTimeout: 900s（= Lambda 超时）
+- maxReceiveCount: 3（重试 3 次）
+- DLQ 告警：消息进入 DLQ 时触发 CloudWatch 告警
 
 ## Session 管理
 

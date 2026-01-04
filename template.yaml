@@ -67,6 +67,31 @@ Resources:
         AttributeName: ttl
         Enabled: true
 
+  # SQS Task Queue
+  TaskQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-TaskQueue'
+      VisibilityTimeout: 900  # 15 minutes = Lambda timeout
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DLQueue.Arn
+        maxReceiveCount: 3  # Retry 3 times then move to DLQ
+
+  # Dead Letter Queue
+  DLQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-DLQueue'
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # SNS Topic for alarm notifications
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-Alarms'
+      DisplayName: OmniCloud Agent Alarms
+
   # Agent Server Lambda (Container)
   AgentServerFunction:
     Type: AWS::Serverless::Function
@@ -108,24 +133,117 @@ Resources:
       FunctionUrlConfig:
         AuthType: NONE
 
-  # SDK Client Lambda (ZIP)
+  # SDK Client Lambda - Producer (writes to SQS, returns 200 immediately)
   SdkClientFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ./agent-sdk-client
       Handler: handler.lambda_handler
       Runtime: python3.12
+      Timeout: 10  # Producer should complete quickly (<1s for message validation + SQS write)
       Environment:
         Variables:
           TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
           AGENT_SERVER_URL: !GetAtt AgentServerFunctionUrl.FunctionUrl
           SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
+          QUEUE_URL: !Ref TaskQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TaskQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: '*'
       Events:
         Webhook:
           Type: HttpApi
           Properties:
             Path: /webhook
             Method: POST
+
+  # Consumer Lambda - processes messages from SQS
+  ConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./agent-sdk-client
+      Handler: consumer.lambda_handler
+      Runtime: python3.12
+      Timeout: 900  # 15 minutes for long Agent Server calls
+      Environment:
+        Variables:
+          TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+          AGENT_SERVER_URL: !GetAtt AgentServerFunctionUrl.FunctionUrl
+          SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
+          QUEUE_URL: !Ref TaskQueue
+          SESSION_TABLE: !Ref SessionTable
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt TaskQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionTable
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TaskQueue.Arn
+            BatchSize: 1  # Process one message at a time
+            MaximumBatchingWindowInSeconds: 0  # Process immediately
+
+  # DLQ Alarm - alert when messages land in DLQ
+  DLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-DLQ-Messages'
+      AlarmDescription: Alert when messages land in Dead Letter Queue
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DLQueue.QueueName
+
+  # Producer SQS send error alarm
+  ProducerSQSErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-Producer-SQS-Errors'
+      AlarmDescription: Alert when Producer fails to send messages to SQS
+      MetricName: SQSError.QueueNotFound
+      Namespace: OmniCloudAgent/Producer
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # Producer Lambda error alarm
+  ProducerLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-Producer-Lambda-Errors'
+      AlarmDescription: Alert on Producer Lambda exceptions
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SdkClientFunction
 
 Outputs:
   WebhookUrl:
@@ -134,3 +252,14 @@ Outputs:
   AgentServerUrl:
     Description: Agent Server Function URL
     Value: !GetAtt AgentServerFunctionUrl.FunctionUrl
+  TaskQueueUrl:
+    Description: Task Queue URL
+    Value: !Ref TaskQueue
+  DLQueueUrl:
+    Description: Dead Letter Queue URL
+    Value: !Ref DLQueue
+  AlarmTopicArn:
+    Description: SNS Topic for CloudWatch Alarm notifications
+    Value: !Ref AlarmTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlarmTopic'

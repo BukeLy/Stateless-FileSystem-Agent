@@ -10,6 +10,7 @@ class Config:
     telegram_token: str
     agent_server_url: str
     auth_token: str
+    queue_url: str
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -18,4 +19,5 @@ class Config:
             telegram_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
             agent_server_url=os.getenv('AGENT_SERVER_URL', ''),
             auth_token=os.getenv('SDK_CLIENT_AUTH_TOKEN', 'default-token'),
+            queue_url=os.getenv('QUEUE_URL', ''),
         )
