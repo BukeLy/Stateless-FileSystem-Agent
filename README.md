@@ -19,7 +19,7 @@ Telegram User → Bot API → API Gateway → sdk-client Lambda
 - **Session 持久化**：DynamoDB 存储映射，S3 存储对话历史，支持跨请求恢复
 - **多租户隔离**：基于 Telegram chat_id + thread_id 实现客户端隔离
 - **SubAgent 支持**：可配置多个专业 Agent（如 AWS 支持）
-- **Skills 支持**：可复用的技能模块（计划中）
+- **Skills 支持**：可复用的技能模块
 - **MCP 集成**：支持 HTTP 和本地命令类型的 MCP 服务器
 - **自动清理**：25天 TTL + S3 生命周期管理
 
@@ -33,7 +33,8 @@ Telegram User → Bot API → API Gateway → sdk-client Lambda
 │   └── claude-config/         # 配置文件
 │       ├── agents.json        # SubAgent定义
 │       ├── mcp.json           # MCP服务器配置
-│       ├── skills/            # Skills定义（计划中）
+│       ├── skills/            # Skills定义
+│       │   └── hello-world/   # 示例 Skill
 │       └── system_prompt.md   # 系统提示
 │
 ├── agent-sdk-client/          # Telegram客户端 (ZIP部署)
@@ -121,7 +122,6 @@ sam deploy --guided
 
 ## TODO
 
-- [ ] 实现 Skills 支持（参考 `docs/anthropic-agent-sdk-official/skills-in-sdk.md`）
 - [ ] 多租户 TenantID 隔离
 
 ## License

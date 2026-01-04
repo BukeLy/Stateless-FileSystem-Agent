@@ -18,6 +18,10 @@ RUN chmod 644 *.py
 COPY claude-config/ /opt/claude-config/
 RUN chmod -R 755 /opt/claude-config/
 
+# Copy skills to /opt/claude-skills (will be copied to /tmp/.claude-code/skills at runtime)
+COPY claude-config/skills/ /opt/claude-skills/
+RUN chmod -R 755 /opt/claude-skills/
+
 # Create ~/.claude and ~/.aws directories and ensure writable
 RUN mkdir -p /root/.claude/projects /root/.claude/debug /root/.claude/todos /root/.aws && \
     touch /root/.claude.json && \
