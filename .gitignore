@@ -17,4 +17,3 @@ agent-sdk-server/claude-settings.json
 
 # Sensitive configuration files
 samconfig.toml
-samconfig*.toml
