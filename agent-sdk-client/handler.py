@@ -15,6 +15,17 @@ from telegram.constants import ParseMode, ChatAction
 
 from config import Config
 
+# Reuse DynamoDB resource across invocations for connection pooling
+_dynamodb_resource = None
+
+
+def _get_dynamodb_resource():
+    """Get or create DynamoDB resource singleton."""
+    global _dynamodb_resource
+    if _dynamodb_resource is None:
+        _dynamodb_resource = boto3.resource('dynamodb')
+    return _dynamodb_resource
+
 
 def is_message_duplicate(config: Config, chat_id: int, message_id: int) -> bool:
     """Check if message was already processed using DynamoDB.
@@ -25,7 +36,7 @@ def is_message_duplicate(config: Config, chat_id: int, message_id: int) -> bool:
     if not config.message_dedup_table:
         return False
 
-    dynamodb = boto3.resource('dynamodb')
+    dynamodb = _get_dynamodb_resource()
     table = dynamodb.Table(config.message_dedup_table)
 
     dedup_key = f"{chat_id}:{message_id}"

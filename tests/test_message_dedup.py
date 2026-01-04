@@ -1,13 +1,7 @@
 """Test message deduplication logic for SDK client."""
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-# Add agent-sdk-client to path
-SDK_CLIENT_DIR = Path(__file__).parent.parent / 'agent-sdk-client'
-sys.path.insert(0, str(SDK_CLIENT_DIR))
 
 from config import Config
 from handler import is_message_duplicate
@@ -43,11 +37,13 @@ class TestIsDuplicateMessage:
         result = is_message_duplicate(mock_config_no_table, 12345, 67890)
         assert result is False
 
-    @patch('handler.boto3')
-    def test_new_message_returns_false(self, mock_boto3, mock_config):
+    @patch('handler._get_dynamodb_resource')
+    def test_new_message_returns_false(self, mock_get_dynamodb, mock_config):
         """First occurrence of a message should return False."""
         mock_table = MagicMock()
-        mock_boto3.resource.return_value.Table.return_value = mock_table
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb
         # Simulate successful put (no exception)
         mock_table.put_item.return_value = {}
 
@@ -59,13 +55,15 @@ class TestIsDuplicateMessage:
         call_args = mock_table.put_item.call_args
         assert call_args[1]['Item']['message_key'] == '12345:67890'
 
-    @patch('handler.boto3')
-    def test_duplicate_message_returns_true(self, mock_boto3, mock_config):
+    @patch('handler._get_dynamodb_resource')
+    def test_duplicate_message_returns_true(self, mock_get_dynamodb, mock_config):
         """Duplicate message should return True."""
         from botocore.exceptions import ClientError
 
         mock_table = MagicMock()
-        mock_boto3.resource.return_value.Table.return_value = mock_table
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb
         # Simulate ConditionalCheckFailedException
         mock_table.put_item.side_effect = ClientError(
             {'Error': {'Code': 'ConditionalCheckFailedException'}},
@@ -76,13 +74,15 @@ class TestIsDuplicateMessage:
 
         assert result is True
 
-    @patch('handler.boto3')
-    def test_other_dynamo_error_raises(self, mock_boto3, mock_config):
+    @patch('handler._get_dynamodb_resource')
+    def test_other_dynamo_error_raises(self, mock_get_dynamodb, mock_config):
         """Other DynamoDB errors should be re-raised."""
         from botocore.exceptions import ClientError
 
         mock_table = MagicMock()
-        mock_boto3.resource.return_value.Table.return_value = mock_table
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb
         # Simulate a different error
         mock_table.put_item.side_effect = ClientError(
             {'Error': {'Code': 'ProvisionedThroughputExceededException'}},
@@ -92,13 +92,15 @@ class TestIsDuplicateMessage:
         with pytest.raises(ClientError):
             is_message_duplicate(mock_config, 12345, 67890)
 
-    @patch('handler.boto3')
+    @patch('handler._get_dynamodb_resource')
     @patch('handler.time')
-    def test_ttl_is_24_hours(self, mock_time, mock_boto3, mock_config):
+    def test_ttl_is_24_hours(self, mock_time, mock_get_dynamodb, mock_config):
         """TTL should be set to 24 hours from current time."""
         mock_time.time.return_value = 1000000
         mock_table = MagicMock()
-        mock_boto3.resource.return_value.Table.return_value = mock_table
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb
         mock_table.put_item.return_value = {}
 
         is_message_duplicate(mock_config, 12345, 67890)
