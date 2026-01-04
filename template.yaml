@@ -85,6 +85,13 @@ Resources:
       QueueName: !Sub '${AWS::StackName}-DLQueue'
       MessageRetentionPeriod: 1209600  # 14 days
 
+  # SNS Topic for alarm notifications
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-Alarms'
+      DisplayName: OmniCloud Agent Alarms
+
   # Agent Server Lambda (Container)
   AgentServerFunction:
     Type: AWS::Serverless::Function
@@ -133,7 +140,7 @@ Resources:
       CodeUri: ./agent-sdk-client
       Handler: handler.lambda_handler
       Runtime: python3.12
-      Timeout: 30  # Producer should complete quickly
+      Timeout: 10  # Producer should complete quickly (<1s for message validation + SQS write)
       Environment:
         Variables:
           TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
@@ -143,6 +150,11 @@ Resources:
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt TaskQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cloudwatch:PutMetricData
+              Resource: '*'
       Events:
         Webhook:
           Type: HttpApi
@@ -191,9 +203,47 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
       Dimensions:
         - Name: QueueName
           Value: !GetAtt DLQueue.QueueName
+
+  # Producer SQS send error alarm
+  ProducerSQSErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-Producer-SQS-Errors'
+      AlarmDescription: Alert when Producer fails to send messages to SQS
+      MetricName: SQSError.QueueNotFound
+      Namespace: OmniCloudAgent/Producer
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # Producer Lambda error alarm
+  ProducerLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-Producer-Lambda-Errors'
+      AlarmDescription: Alert on Producer Lambda exceptions
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SdkClientFunction
 
 Outputs:
   WebhookUrl:
@@ -208,3 +258,8 @@ Outputs:
   DLQueueUrl:
     Description: Dead Letter Queue URL
     Value: !Ref DLQueue
+  AlarmTopicArn:
+    Description: SNS Topic for CloudWatch Alarm notifications
+    Value: !Ref AlarmTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlarmTopic'

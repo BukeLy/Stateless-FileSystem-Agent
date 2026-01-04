@@ -64,7 +64,7 @@ async def process_message(message_data: dict) -> None:
             text="Request timed out.",
             message_thread_id=message.message_thread_id,
         )
-        raise  # Re-raise to trigger SQS retry
+        raise  # Re-raise to trigger SQS retry for transient errors
 
     except Exception as e:
         await bot.send_message(
@@ -72,7 +72,8 @@ async def process_message(message_data: dict) -> None:
             text=f"Error: {str(e)[:200]}",
             message_thread_id=message.message_thread_id,
         )
-        raise  # Re-raise to trigger SQS retry
+        # Don't re-raise for general exceptions - error message already sent
+        # to user, retrying would cause duplicate messages
 
     # Format response
     if result.get('is_error'):
