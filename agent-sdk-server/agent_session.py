@@ -157,8 +157,8 @@ async def process_message(
         allowed_tools=[
             #'Bash', 'Read', 'Write', 'Edit',
             #'Glob', 'Grep', 'WebFetch',
-            'Task',
-            'Skill'  # Required for SubAgent invocation
+            'Task',   # Call SubAgents defined in claude-config/agents.json
+            'Skill'   # Call Skills defined in claude-config/skills/*/SKILL.md
         ],
         mcp_servers=mcp_servers if mcp_servers else None,
         agents=agents if agents else None,
