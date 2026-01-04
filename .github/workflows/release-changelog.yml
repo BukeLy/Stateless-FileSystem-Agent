@@ -48,7 +48,6 @@ jobs:
 
             完成后 commit 此更新。
           claude_args: |
-            --model ${{ secrets.BEDROCK_MODEL_ARN }}
             --allowedTools "Read,Write,Edit,Bash(git:*)"
 
       - name: Push changelog update
