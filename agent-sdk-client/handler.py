@@ -39,14 +39,6 @@ async def process_webhook(body: dict) -> None:
     if not message or not message.text:
         return
 
-    if message.text.startswith('/'):
-        await bot.send_message(
-            chat_id=message.chat_id,
-            text="Commands not supported yet. Just send me a message!",
-            message_thread_id=message.message_thread_id,
-        )
-        return
-
     await bot.send_chat_action(
         chat_id=message.chat_id,
         action=ChatAction.TYPING,

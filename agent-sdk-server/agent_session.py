@@ -12,9 +12,7 @@ from claude_agent_sdk import (
     query,
     ClaudeAgentOptions,
     AgentDefinition,
-    AssistantMessage,
     ResultMessage,
-    TextBlock,
 )
 
 # Config source (in Docker image) and destination (Lambda writable)
@@ -178,8 +176,8 @@ async def process_message(
         agents=agents if agents else None,
     )
 
-    response_texts: list[str] = []
     result_session_id = session_id or ''
+    result_text = ''
     cost_usd = 0.0
     num_turns = 0
     is_error = False
@@ -190,19 +188,14 @@ async def process_message(
         os.environ['AWS_PROFILE'] = 'bedrock'
 
         async for message in query(prompt=user_message, options=options):
-            # Handle AssistantMessage - extract text from content blocks
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        response_texts.append(block.text)
-
-            # Handle ResultMessage - extract session_id and metadata
-            elif isinstance(message, ResultMessage):
+            # Handle ResultMessage - contains final response and metadata
+            if isinstance(message, ResultMessage):
                 result_session_id = message.session_id
+                result_text = message.result or ''
                 cost_usd = message.total_cost_usd or 0.0
                 num_turns = message.num_turns
                 is_error = message.is_error
-                if is_error and message.result:
+                if is_error:
                     error_message = message.result
 
     except Exception as e:
@@ -214,7 +207,7 @@ async def process_message(
             del os.environ['AWS_PROFILE']
 
     return {
-        'response': '\n'.join(response_texts) if response_texts else '',
+        'response': result_text,
         'session_id': result_session_id,
         'cost_usd': cost_usd,
         'num_turns': num_turns,
