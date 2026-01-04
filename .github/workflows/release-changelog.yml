@@ -1,13 +1,6 @@
 name: Release - Update Changelog
 
-on:
-  release:
-    types: [published]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Release tag (e.g., v0.3.0)'
-        required: true
+on: []
 
 permissions:
   contents: write
@@ -32,7 +25,6 @@ jobs:
       - name: Update Changelog with Claude Code
         uses: anthropics/claude-code-action@v1
         with:
-          model: "haiku"
           use_bedrock: "true"
           show_full_output: "false"
           prompt: |
