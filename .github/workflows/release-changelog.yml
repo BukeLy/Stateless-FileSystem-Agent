@@ -3,6 +3,11 @@ name: Release - Update Changelog
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.3.0)'
+        required: true
 
 permissions:
   contents: write
@@ -31,12 +36,12 @@ jobs:
           prompt: |
             请更新 CHANGELOG.md 文件以完成版本发布：
 
-            1. 当前release版本: ${{ github.event.release.tag_name }}
+            1. 当前release版本: ${{ github.event.release.tag_name || github.event.inputs.tag }}
             2. 使用 `git tag -l --sort=-version:refname` 获取前一个release标签
-            3. 使用 `git log [previous-tag]..${{ github.event.release.tag_name }} --oneline` 获取此版本的所有提交
+            3. 使用 `git log [previous-tag]..${{ github.event.release.tag_name || github.event.inputs.tag }} --oneline` 获取此版本的所有提交
             4. 根据提交信息总结变更（分类为 Added/Changed/Fixed/Removed）
             5. 在 CHANGELOG.md 中：
-               - 将 [Unreleased] 部分改为 [${{ github.event.release.tag_name }}] 日期格式为 YYYY-MM-DD
+               - 将 [Unreleased] 部分改为 [${{ github.event.release.tag_name || github.event.inputs.tag }}] 日期格式为 YYYY-MM-DD
                - 在顶部添加新的 [Unreleased] 部分
                - 保持原有的 Markdown 格式
 
