@@ -31,6 +31,8 @@ jobs:
 
       - name: Update Changelog with Claude Code
         uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_MODEL: arn:aws:bedrock:us-east-1:287422227648:application-inference-profile/w13qb7e2nmkr
         with:
           use_bedrock: "true"
           show_full_output: "true"
