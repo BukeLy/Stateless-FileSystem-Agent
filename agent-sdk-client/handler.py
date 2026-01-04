@@ -1,102 +1,64 @@
-"""Lambda handler for sdk-client.
+"""Lambda handler for sdk-client (Producer).
 
-Receives Telegram webhook, calls agent-server, sends response back.
+Receives Telegram webhook, writes to SQS, returns 200 immediately.
 """
-import asyncio
 import json
+import os
 from typing import Any
 
-import httpx
+import boto3
 from telegram import Bot, Update
-from telegram.constants import ParseMode, ChatAction
-from telegram.helpers import escape_markdown
-from telegram.error import BadRequest
 
 from config import Config
 
+# Reuse SQS client across invocations
+_sqs_client = None
+
+
+def _get_sqs_client():
+    """Get or create SQS client singleton."""
+    global _sqs_client
+    if _sqs_client is None:
+        _sqs_client = boto3.client('sqs')
+    return _sqs_client
+
 
 def lambda_handler(event: dict, context: Any) -> dict:
-    """Lambda entry point."""
+    """Lambda entry point - Producer.
+
+    Validates Telegram message and writes to SQS queue.
+    Returns 200 immediately without waiting for processing.
+    """
     try:
         body = json.loads(event.get('body', '{}'))
     except json.JSONDecodeError:
         return {'statusCode': 200}
 
-    asyncio.run(process_webhook(body))
-    return {'statusCode': 200}
-
-
-async def process_webhook(body: dict) -> None:
-    """Process Telegram webhook payload."""
     config = Config.from_env()
-    bot = Bot(config.telegram_token)
 
+    # Quick validation - parse update to check if it's a valid message
+    bot = Bot(config.telegram_token)
     update = Update.de_json(body, bot)
+
     if not update:
-        return
+        return {'statusCode': 200}
 
     message = update.message or update.edited_message
     if not message or not message.text:
-        return
+        return {'statusCode': 200}
 
-    await bot.send_chat_action(
-        chat_id=message.chat_id,
-        action=ChatAction.TYPING,
-        message_thread_id=message.message_thread_id,
+    # Write to SQS for async processing
+    sqs = _get_sqs_client()
+    sqs.send_message(
+        QueueUrl=config.queue_url,
+        MessageBody=json.dumps({
+            'telegram_update': body,
+            'chat_id': message.chat_id,
+            'message_id': message.message_id,
+            'text': message.text,
+            'thread_id': message.message_thread_id,
+        }),
     )
 
-    try:
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            response = await client.post(
-                config.agent_server_url,
-                headers={
-                    'Authorization': f'Bearer {config.auth_token}',
-                    'Content-Type': 'application/json',
-                },
-                json={
-                    'user_message': message.text,
-                    'chat_id': str(message.chat_id),
-                    'thread_id': str(message.message_thread_id) if message.message_thread_id else None,
-                },
-            )
-            result = response.json()
-
-    except httpx.TimeoutException:
-        await bot.send_message(chat_id=message.chat_id, text="Request timed out.",
-                              message_thread_id=message.message_thread_id)
-        return
-    except Exception as e:
-        await bot.send_message(chat_id=message.chat_id, text=f"Error: {str(e)[:200]}",
-                              message_thread_id=message.message_thread_id)
-        return
-
-    if result.get('is_error'):
-        text = f"Agent error: {result.get('error_message', 'Unknown')}"
-    else:
-        text = result.get('response', 'No response')
-
-    if len(text) > 4000:
-        text = text[:4000] + "\n\n... (truncated)"
-
-    # Try MARKDOWN_V2 first, fallback with escape on parse errors
-    try:
-        await bot.send_message(
-            chat_id=message.chat_id,
-            text=text,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            message_thread_id=message.message_thread_id,
-            reply_to_message_id=message.message_id,
-        )
-    except BadRequest as e:
-        if "parse entities" in str(e).lower():
-            print(f"[MARKDOWN_V2] Parse error: {e}, retrying with escaped text")
-            safe_text = escape_markdown(text, version=2)
-            await bot.send_message(
-                chat_id=message.chat_id,
-                text=safe_text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                message_thread_id=message.message_thread_id,
-                reply_to_message_id=message.message_id,
-            )
-        else:
-            raise
+    # Return 200 immediately - processing happens async in consumer
+    return {'statusCode': 200}
