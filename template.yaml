@@ -67,6 +67,22 @@ Resources:
         AttributeName: ttl
         Enabled: true
 
+  # DynamoDB Table for message deduplication (prevents Telegram webhook retry duplicates)
+  MessageDedupTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: omnicloud-agent-message-dedup
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: message_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: message_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
   # Agent Server Lambda (Container)
   AgentServerFunction:
     Type: AWS::Serverless::Function
@@ -120,6 +136,10 @@ Resources:
           TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
           AGENT_SERVER_URL: !GetAtt AgentServerFunctionUrl.FunctionUrl
           SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
+          MESSAGE_DEDUP_TABLE: !Ref MessageDedupTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MessageDedupTable
       Events:
         Webhook:
           Type: HttpApi

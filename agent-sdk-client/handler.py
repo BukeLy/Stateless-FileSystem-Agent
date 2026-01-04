@@ -4,13 +4,50 @@ Receives Telegram webhook, calls agent-server, sends response back.
 """
 import asyncio
 import json
+import time
 from typing import Any
 
+import boto3
 import httpx
+from botocore.exceptions import ClientError
 from telegram import Bot, Update
 from telegram.constants import ParseMode, ChatAction
 
 from config import Config
+
+
+def is_message_duplicate(config: Config, chat_id: int, message_id: int) -> bool:
+    """Check if message was already processed using DynamoDB.
+
+    Uses conditional put to atomically check and mark message as processing.
+    Returns True if message is a duplicate (already being processed).
+    """
+    if not config.message_dedup_table:
+        return False
+
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(config.message_dedup_table)
+
+    dedup_key = f"{chat_id}:{message_id}"
+    current_time = int(time.time())
+    # TTL: 24 hours - messages older than this are safe to reprocess
+    ttl = current_time + 86400
+
+    try:
+        # Conditional put - fails if item already exists
+        table.put_item(
+            Item={
+                'message_key': dedup_key,
+                'created_at': current_time,
+                'ttl': ttl,
+            },
+            ConditionExpression='attribute_not_exists(message_key)',
+        )
+        return False  # Successfully inserted - not a duplicate
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return True  # Item exists - this is a duplicate
+        raise  # Re-raise other errors
 
 
 def lambda_handler(event: dict, context: Any) -> dict:
@@ -36,6 +73,10 @@ async def process_webhook(body: dict) -> None:
     message = update.message or update.edited_message
     if not message or not message.text:
         return
+
+    # Check for duplicate message (Telegram webhook retry)
+    if is_message_duplicate(config, message.chat_id, message.message_id):
+        return  # Skip duplicate processing
 
     if message.text.startswith('/'):
         await bot.send_message(
