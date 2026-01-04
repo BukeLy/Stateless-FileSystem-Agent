@@ -9,6 +9,8 @@ from typing import Any
 import httpx
 from telegram import Bot, Update
 from telegram.constants import ParseMode, ChatAction
+from telegram.helpers import escape_markdown
+from telegram.error import BadRequest
 
 from config import Config
 
@@ -84,10 +86,25 @@ async def process_webhook(body: dict) -> None:
     if len(text) > 4000:
         text = text[:4000] + "\n\n... (truncated)"
 
-    await bot.send_message(
-        chat_id=message.chat_id,
-        text=text,
-        parse_mode=ParseMode.MARKDOWN,
-        message_thread_id=message.message_thread_id,
-        reply_to_message_id=message.message_id,
-    )
+    # Try MARKDOWN_V2 first, fallback with escape on parse errors
+    try:
+        await bot.send_message(
+            chat_id=message.chat_id,
+            text=text,
+            parse_mode=ParseMode.MARKDOWN_V2,
+            message_thread_id=message.message_thread_id,
+            reply_to_message_id=message.message_id,
+        )
+    except BadRequest as e:
+        if "parse entities" in str(e).lower():
+            print(f"[MARKDOWN_V2] Parse error: {e}, retrying with escaped text")
+            safe_text = escape_markdown(text, version=2)
+            await bot.send_message(
+                chat_id=message.chat_id,
+                text=safe_text,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                message_thread_id=message.message_thread_id,
+                reply_to_message_id=message.message_id,
+            )
+        else:
+            raise

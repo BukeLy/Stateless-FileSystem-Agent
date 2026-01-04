@@ -1,1 +1,4 @@
 - Subagent的"tools"字段定义不支持通配符,而是需要具体的Tools名称才可以.
+- template.yaml中引用Parameter时必须使用`!Ref`而非字面字符串`'${ParamName}'`.
+- agents/*.md文件必须包含YAML frontmatter并定义`name`字段,否则SDK会跳过加载.
+- Lambda容器中uvx不可用,需要在Dockerfile中创建符号链接或使用uv安装脚本.

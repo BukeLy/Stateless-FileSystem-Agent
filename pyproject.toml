@@ -9,4 +9,5 @@ dependencies = [
     "claude-agent-sdk>=0.1.18",
     "httpx>=0.28.1",
     "loguru>=0.7.3",
+    "python-telegram-bot>=21.0",
 ]

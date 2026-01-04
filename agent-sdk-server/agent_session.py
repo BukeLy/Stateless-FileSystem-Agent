@@ -20,6 +20,8 @@ from claude_agent_sdk import (
 # Config source (in Docker image) and destination (Lambda writable)
 CONFIG_SRC = Path('/opt/claude-config')
 CONFIG_DST = Path('/tmp/.claude-code')
+SKILLS_SRC = Path('/opt/claude-skills')
+SKILLS_DST = CONFIG_DST / 'skills'
 
 
 def setup_lambda_environment():
@@ -57,6 +59,17 @@ region = us-east-1
             else:
                 shutil.copy2(item, dst)
         print(f"Config copied from {CONFIG_SRC} to {CONFIG_DST}")
+
+    # Copy skills to CLAUDE_CONFIG_DIR/skills/ for SDK to discover
+    if SKILLS_SRC.exists():
+        SKILLS_DST.mkdir(parents=True, exist_ok=True)
+        for item in SKILLS_SRC.iterdir():
+            dst = SKILLS_DST / item.name
+            if item.is_dir():
+                shutil.copytree(item, dst, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dst)
+        print(f"Skills copied from {SKILLS_SRC} to {SKILLS_DST}")
 
     print(f"Bedrock profile created at {credentials_file}")
 
@@ -154,11 +167,12 @@ async def process_message(
         permission_mode='bypassPermissions',  # Lambda has no interactive terminal
         max_turns=max_turns,
         system_prompt=system_prompt,
+        setting_sources=['user'],  # Load skills from CLAUDE_CONFIG_DIR/skills/
         allowed_tools=[
             #'Bash', 'Read', 'Write', 'Edit',
             #'Glob', 'Grep', 'WebFetch',
-            'Task',
-            'Skill'  # Required for SubAgent invocation
+            'Task',   # For SubAgents
+            'Skill',  # For Skills
         ],
         mcp_servers=mcp_servers if mcp_servers else None,
         agents=agents if agents else None,

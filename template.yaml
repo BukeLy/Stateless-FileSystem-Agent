@@ -19,17 +19,17 @@ Parameters:
   BedrockHaikuModelArn:
     Type: String
     Default: ''
-    Description: (Optional) ARN for Bedrock Haiku model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    Description: "(Optional) ARN for Bedrock Haiku model"
     NoEcho: true
   BedrockSonnetModelArn:
     Type: String
     Default: ''
-    Description: (Optional) ARN for Bedrock Sonnet model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    Description: "(Optional) ARN for Bedrock Sonnet model"
     NoEcho: true
   BedrockOpusModelArn:
     Type: String
     Default: ''
-    Description: (Optional) ARN for Bedrock Opus 4.5 model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    Description: "(Optional) ARN for Bedrock Opus 4.5 model"
     NoEcho: true
 
 Globals:
@@ -96,10 +96,10 @@ Resources:
           DISABLE_AUTOUPDATER: '1'
           DISABLE_TELEMETRY: '1'
           # Bedrock model ARNs
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: '${BedrockHaikuModelArn}'
-          ANTHROPIC_DEFAULT_SONNET_MODEL: '${BedrockSonnetModelArn}'
-          ANTHROPIC_DEFAULT_OPUS_4_5_MODEL: '${BedrockOpusModelArn}'
-          ANTHROPIC_DEFAULT_OPUS_MODEL: '${BedrockOpusModelArn}'
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: !Ref BedrockHaikuModelArn
+          ANTHROPIC_DEFAULT_SONNET_MODEL: !Ref BedrockSonnetModelArn
+          ANTHROPIC_DEFAULT_OPUS_4_5_MODEL: !Ref BedrockOpusModelArn
+          ANTHROPIC_DEFAULT_OPUS_MODEL: !Ref BedrockOpusModelArn
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref SessionBucket
