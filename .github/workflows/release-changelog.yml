@@ -17,10 +17,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
       - name: Update Changelog with Claude Code
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_bedrock: "true"
           prompt: |
             请更新 CHANGELOG.md 文件以完成版本发布：
 
@@ -35,6 +41,7 @@ jobs:
 
             完成后 commit 此更新。
           claude_args: |
+            --model ${{ secrets.BEDROCK_MODEL_ARN }}
             --allowedTools "Read,Write,Edit,Bash(git:*)"
 
       - name: Push changelog update
