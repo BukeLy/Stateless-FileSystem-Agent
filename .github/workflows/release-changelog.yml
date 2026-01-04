@@ -31,11 +31,10 @@ jobs:
 
       - name: Update Changelog with Claude Code
         uses: anthropics/claude-code-action@v1
-        env:
-          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ secrets.BEDROCK_MODEL_ARN}}
         with:
+          model: "haiku"
           use_bedrock: "true"
-          show_full_output: "true"
+          show_full_output: "false"
           prompt: |
             请更新 CHANGELOG.md 文件以完成版本发布：
 
