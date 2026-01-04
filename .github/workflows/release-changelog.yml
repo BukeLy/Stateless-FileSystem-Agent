@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 jobs:
   update-changelog:
@@ -19,23 +20,24 @@ jobs:
       - name: Update Changelog with Claude Code
         uses: anthropics/claude-code-action@v1
         with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            请更新 CHANGELOG.md 文件：
-            1. 获取当前release标签: ${{ github.event.release.tag_name }}
-            2. 获取前一个release标签（使用git tag命令）
-            3. 使用 git log 获取这两个标签之间的提交信息
-            4. 将 CHANGELOG.md 中的 [Unreleased] 部分转换为版本 ${{ github.event.release.tag_name }}
-            5. 在顶部添加新的 [Unreleased] 部分
-            6. 保留原有的提交信息格式（Changed/Added/Fixed/Removed等）
+            请更新 CHANGELOG.md 文件以完成版本发布：
 
-            CHANGELOG.md 当前内容已加载在工作区中，请直接编辑。
+            1. 当前release版本: ${{ github.event.release.tag_name }}
+            2. 使用 `git tag -l --sort=-version:refname` 获取前一个release标签
+            3. 使用 `git log [previous-tag]..${{ github.event.release.tag_name }} --oneline` 获取此版本的所有提交
+            4. 根据提交信息总结变更（分类为 Added/Changed/Fixed/Removed）
+            5. 在 CHANGELOG.md 中：
+               - 将 [Unreleased] 部分改为 [${{ github.event.release.tag_name }}] 日期格式为 YYYY-MM-DD
+               - 在顶部添加新的 [Unreleased] 部分
+               - 保持原有的 Markdown 格式
+
+            完成后 commit 此更新。
           claude_args: |
-            {
-              "tools": ["Read", "Edit", "Bash"],
-              "budget": "medium"
-            }
+            --allowedTools "Read,Write,Edit,Bash(git:*)"
 
-      - name: Commit and push changelog update
+      - name: Push changelog update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -43,7 +45,5 @@ jobs:
           if git diff --quiet CHANGELOG.md; then
             echo "No changes to CHANGELOG.md"
           else
-            git add CHANGELOG.md
-            git commit -m "chore: 更新 CHANGELOG 为版本 ${{ github.event.release.tag_name }}"
             git push
           fi
