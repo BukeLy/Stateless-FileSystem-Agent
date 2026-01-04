@@ -52,10 +52,15 @@ region = us-east-1
     if CONFIG_SRC.exists():
         for item in CONFIG_SRC.iterdir():
             dst = CONFIG_DST / item.name
-            if item.is_dir():
-                shutil.copytree(item, dst, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, dst)
+            try:
+                if item.is_dir():
+                    shutil.copytree(item, dst, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, dst)
+            except Exception as e:
+                error_msg = f"Failed to copy config item {item} to {dst}: {e}"
+                print(error_msg)
+                raise RuntimeError(error_msg) from e
         print(f"Config copied from {CONFIG_SRC} to {CONFIG_DST}")
 
     print(f"Bedrock profile created at {credentials_file}")
