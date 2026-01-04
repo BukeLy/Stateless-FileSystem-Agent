@@ -1,0 +1,49 @@
+name: Release - Update Changelog
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update Changelog with Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: |
+            请更新 CHANGELOG.md 文件：
+            1. 获取当前release标签: ${{ github.event.release.tag_name }}
+            2. 获取前一个release标签（使用git tag命令）
+            3. 使用 git log 获取这两个标签之间的提交信息
+            4. 将 CHANGELOG.md 中的 [Unreleased] 部分转换为版本 ${{ github.event.release.tag_name }}
+            5. 在顶部添加新的 [Unreleased] 部分
+            6. 保留原有的提交信息格式（Changed/Added/Fixed/Removed等）
+
+            CHANGELOG.md 当前内容已加载在工作区中，请直接编辑。
+          claude_args: |
+            {
+              "tools": ["Read", "Edit", "Bash"],
+              "budget": "medium"
+            }
+
+      - name: Commit and push changelog update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet CHANGELOG.md; then
+            echo "No changes to CHANGELOG.md"
+          else
+            git add CHANGELOG.md
+            git commit -m "chore: 更新 CHANGELOG 为版本 ${{ github.event.release.tag_name }}"
+            git push
+          fi
