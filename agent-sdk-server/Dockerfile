@@ -1,7 +1,8 @@
 FROM public.ecr.aws/lambda/python:3.12-arm64
 
-# Install uv
+# Install uv and create uvx symlink
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+RUN ln -s /usr/local/bin/uv /usr/local/bin/uvx
 
 # Install Claude Code CLI (npm package, requires nodejs)
 RUN dnf install -y nodejs npm && npm install -g @anthropic-ai/claude-code
