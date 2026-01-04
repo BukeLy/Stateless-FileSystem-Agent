@@ -16,6 +16,21 @@ Parameters:
     Type: String
     Default: 'change-me-in-production'
     NoEcho: true
+  BedrockHaikuModelArn:
+    Type: String
+    Default: ''
+    Description: (Optional) ARN for Bedrock Haiku model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    NoEcho: true
+  BedrockSonnetModelArn:
+    Type: String
+    Default: ''
+    Description: (Optional) ARN for Bedrock Sonnet model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    NoEcho: true
+  BedrockOpusModelArn:
+    Type: String
+    Default: ''
+    Description: (Optional) ARN for Bedrock Opus 4.5 model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    NoEcho: true
 
 Globals:
   Function:

@@ -1,0 +1,17 @@
+version = 0.1
+
+[default.build.parameters]
+use_container = true
+
+[default.deploy.parameters]
+stack_name = "omnicloud-agent"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+s3_prefix = "omnicloud-agent"
+profile = "YOUR_AWS_PROFILE"  # 替换为你的AWS profile
+disable_rollback = true
+image_repositories = ["AgentServerFunction=YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/omnicloudagentea80e707/agentserverfunction769568e1repo"]  # 替换为你的AWS账户ID和ECR仓库
+
+[default.global.parameters]
+region = "us-east-1"
