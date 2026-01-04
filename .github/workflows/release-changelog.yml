@@ -33,6 +33,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           use_bedrock: "true"
+          show_full_output: "true"
           prompt: |
             请更新 CHANGELOG.md 文件以完成版本发布：
 
