@@ -18,14 +18,32 @@ from config import Config
 def lambda_handler(event: dict, context: Any) -> dict:
     """SQS Consumer Lambda entry point."""
     for record in event['Records']:
-        message_data = json.loads(record['body'])
-        asyncio.run(process_message(message_data))
+        try:
+            message_data = json.loads(record['body'])
+        except json.JSONDecodeError as e:
+            # Invalid message format - log and skip
+            import logging
+            logger = logging.getLogger()
+            logger.error(f"Failed to parse SQS message: {e}")
+            continue
+
+        try:
+            asyncio.run(process_message(message_data))
+        except Exception as e:
+            # Log and let SQS retry on failure
+            import logging
+            logger = logging.getLogger()
+            logger.exception(f"Failed to process message: {e}")
+            raise  # Re-raise to fail the batch item
 
     return {'statusCode': 200}
 
 
 async def process_message(message_data: dict) -> None:
     """Process single message from SQS queue."""
+    import logging
+    logger = logging.getLogger()
+
     config = Config.from_env()
     bot = Bot(config.telegram_token)
 
@@ -33,12 +51,24 @@ async def process_message(message_data: dict) -> None:
     update = Update.de_json(message_data['telegram_update'], bot)
     message = update.message or update.edited_message
 
+    if not message:
+        logger.warning("Received update with no message or edited_message")
+        return
+
     # Send typing indicator
     await bot.send_chat_action(
         chat_id=message.chat_id,
         action=ChatAction.TYPING,
         message_thread_id=message.message_thread_id,
     )
+
+    # Initialize result with default error response
+    # This ensures result is always defined, even if Agent Server call fails
+    result = {
+        'response': '',
+        'is_error': True,
+        'error_message': 'Failed to get response from Agent Server'
+    }
 
     # Call Agent Server
     try:
@@ -59,6 +89,7 @@ async def process_message(message_data: dict) -> None:
             result = response.json()
 
     except httpx.TimeoutException:
+        logger.warning(f"Agent Server timeout for chat_id={message.chat_id}")
         await bot.send_message(
             chat_id=message.chat_id,
             text="Request timed out.",
@@ -67,19 +98,23 @@ async def process_message(message_data: dict) -> None:
         raise  # Re-raise to trigger SQS retry for transient errors
 
     except Exception as e:
-        await bot.send_message(
-            chat_id=message.chat_id,
-            text=f"Error: {str(e)[:200]}",
-            message_thread_id=message.message_thread_id,
-        )
-        # Don't re-raise for general exceptions - error message already sent
-        # to user, retrying would cause duplicate messages
+        logger.exception(f"Agent Server error for chat_id={message.chat_id}")
+        error_text = f"Error: {str(e)[:200]}"
+        try:
+            await bot.send_message(
+                chat_id=message.chat_id,
+                text=error_text,
+                message_thread_id=message.message_thread_id,
+            )
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to Telegram: {send_error}")
+        # Don't re-raise - error message already sent to user, retrying would cause duplicate messages
 
-    # Format response
+    # Format response (result is guaranteed to be defined now)
     if result.get('is_error'):
         text = f"Agent error: {result.get('error_message', 'Unknown')}"
     else:
-        text = result.get('response', 'No response')
+        text = result.get('response') or 'No response'
 
     if len(text) > 4000:
         text = text[:4000] + "\n\n... (truncated)"
