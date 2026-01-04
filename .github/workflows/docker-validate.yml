@@ -3,37 +3,39 @@ name: Docker Build Validation
 on:
   push:
     paths:
-      - 'agent-sdk-server/Dockerfile'
+      - 'agent-sdk-server/**'
   pull_request:
     paths:
-      - 'agent-sdk-server/Dockerfile'
+      - 'agent-sdk-server/**'
 
 jobs:
-  validate-docker:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and validate file permissions
-        run: |
-          cd agent-sdk-server
-          docker build -t agent-sdk-server:test .
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3
+        with:
+          dockerfile: agent-sdk-server/Dockerfile
 
-          # Simulate Lambda init - copy from /opt to /tmp
-          docker run --rm agent-sdk-server:test python -c "
-          import shutil
-          from pathlib import Path
+  build:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
 
-          src = Path('/opt/claude-config')
-          dst = Path('/tmp/.claude-code')
-          dst.mkdir(exist_ok=True)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-          for item in src.iterdir():
-              target = dst / item.name
-              if item.is_dir():
-                  shutil.copytree(item, target, dirs_exist_ok=True)
-              else:
-                  shutil.copy2(item, target)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-          print('Lambda init simulation: OK')
-          "
+      - name: Build ARM64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent-sdk-server
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
