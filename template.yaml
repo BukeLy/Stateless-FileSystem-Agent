@@ -19,17 +19,17 @@ Parameters:
   BedrockHaikuModelArn:
     Type: String
     Default: ''
-    Description: (Optional) ARN for Bedrock Haiku model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    Description: "(Optional) ARN for Bedrock Haiku model"
     NoEcho: true
   BedrockSonnetModelArn:
     Type: String
     Default: ''
-    Description: (Optional) ARN for Bedrock Sonnet model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    Description: "(Optional) ARN for Bedrock Sonnet model"
     NoEcho: true
   BedrockOpusModelArn:
     Type: String
     Default: ''
-    Description: (Optional) ARN for Bedrock Opus 4.5 model (format: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID)
+    Description: "(Optional) ARN for Bedrock Opus 4.5 model"
     NoEcho: true
 
 Globals:
