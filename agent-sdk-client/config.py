@@ -19,7 +19,11 @@ def extract_command(text: Optional[str]) -> Optional[str]:
     if not trimmed.startswith('/'):
         return None
 
-    command = trimmed.split()[0]
+    parts = trimmed.split()
+    if not parts:
+        return None
+
+    command = parts[0]
     if '@' in command:
         command = command.split('@', 1)[0]
     return command or None
@@ -36,7 +40,7 @@ def load_command_whitelist(config_path: Path = DEFAULT_CONFIG_PATH) -> list[str]
         whitelist = data.get('white_list_commands', {}).get('whitelist', [])
         if isinstance(whitelist, list):
             return [cmd for cmd in whitelist if isinstance(cmd, str)]
-    except Exception as exc:  # pragma: no cover - defensive logging
+    except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - defensive logging
         logger.warning(f"Failed to load command whitelist: {exc}")
     return []
 
