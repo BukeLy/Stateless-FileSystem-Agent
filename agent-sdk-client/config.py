@@ -26,7 +26,9 @@ def extract_command(text: Optional[str]) -> Optional[str]:
     command = parts[0]
     if '@' in command:
         command = command.split('@', 1)[0]
-    return command or None
+    if not command:
+        return None
+    return command
 
 
 def load_command_whitelist(config_path: Path = DEFAULT_CONFIG_PATH) -> list[str]:
