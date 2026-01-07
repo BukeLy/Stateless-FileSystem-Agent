@@ -147,6 +147,16 @@ def lambda_handler(event: dict, context: Any) -> dict:
         logger.debug('Ignoring webhook without text message')
         return {'statusCode': 200}
 
+    if not config.is_command_allowed(message.text):
+        logger.info(
+            'Ignoring non-whitelisted command',
+            extra={
+                'chat_id': message.chat_id,
+                'message_id': message.message_id,
+            },
+        )
+        return {'statusCode': 200}
+
     # Write to SQS for async processing
     sqs = _get_sqs_client()
     message_body = {

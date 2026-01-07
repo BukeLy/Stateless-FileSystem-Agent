@@ -1,0 +1,6 @@
+[white_list_commands]
+# Only commands in this whitelist will be forwarded to the Agent backend
+whitelist = [
+    "/custom-skill",
+    "/hello-world",
+]

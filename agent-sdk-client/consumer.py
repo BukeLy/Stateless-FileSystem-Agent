@@ -55,6 +55,16 @@ async def process_message(message_data: dict) -> None:
         logger.warning("Received update with no message or edited_message")
         return
 
+    if not config.is_command_allowed(message.text):
+        logger.info(
+            "Skipping non-whitelisted command",
+            extra={
+                'chat_id': message.chat_id,
+                'message_id': message.message_id,
+            },
+        )
+        return
+
     # Send typing indicator
     await bot.send_chat_action(
         chat_id=message.chat_id,
