@@ -116,8 +116,40 @@ def _send_to_sqs_safe(sqs, queue_url: str, message_body: dict) -> bool:
             f"Unexpected error sending to SQS: {e}",
             extra={'exception_type': type(e).__name__},
         )
-        _send_metric('SQSError.Unexpected')
+            _send_metric('SQSError.Unexpected')
         return False
+
+
+def _handle_local_command(bot: Bot, message, config: Config) -> bool:
+    """Handle non-whitelisted commands locally to give user feedback."""
+    if config.is_command_allowed(message.text):
+        return False
+
+    allowed = config.command_whitelist
+    if allowed:
+        allowed_list = "\n".join(allowed)
+        text = f"Unsupported command. Allowed commands:\n{allowed_list}"
+    else:
+        text = "Unsupported command."
+
+    try:
+        bot.send_message(
+            chat_id=message.chat_id,
+            text=text,
+            message_thread_id=message.message_thread_id,
+            reply_to_message_id=message.message_id,
+        )
+    except Exception:
+        logger.warning("Failed to send local command response", exc_info=True)
+
+    logger.info(
+        'Handled non-whitelisted command locally',
+        extra={
+            'chat_id': message.chat_id,
+            'message_id': message.message_id,
+        },
+    )
+    return True
 
 
 def lambda_handler(event: dict, context: Any) -> dict:
@@ -147,14 +179,7 @@ def lambda_handler(event: dict, context: Any) -> dict:
         logger.debug('Ignoring webhook without text message')
         return {'statusCode': 200}
 
-    if not config.is_command_allowed(message.text):
-        logger.info(
-            'Ignoring non-whitelisted command',
-            extra={
-                'chat_id': message.chat_id,
-                'message_id': message.message_id,
-            },
-        )
+    if _handle_local_command(bot, message, config):
         return {'statusCode': 200}
 
     # Write to SQS for async processing

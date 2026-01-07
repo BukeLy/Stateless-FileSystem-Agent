@@ -63,6 +63,15 @@ async def process_message(message_data: dict) -> None:
                 'message_id': message.message_id,
             },
         )
+        try:
+            await bot.send_message(
+                chat_id=message.chat_id,
+                text="Unsupported command.",
+                message_thread_id=message.message_thread_id,
+                reply_to_message_id=message.message_id,
+            )
+        except Exception:
+            logger.warning("Failed to send local command response", exc_info=True)
         return
 
     # Send typing indicator
