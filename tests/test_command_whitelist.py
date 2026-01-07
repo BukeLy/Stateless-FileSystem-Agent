@@ -1,17 +1,12 @@
-import importlib.util
+import runpy
 from pathlib import Path
 
 import pytest
 
 CLIENT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent-sdk-client" / "config.py"
-
-spec = importlib.util.spec_from_file_location("client_config", CLIENT_CONFIG_PATH)
-config_module = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(config_module)
-
-Config = config_module.Config
-load_command_whitelist = config_module.load_command_whitelist
+config_module = runpy.run_path(CLIENT_CONFIG_PATH)
+Config = config_module["Config"]
+load_command_whitelist = config_module["load_command_whitelist"]
 
 
 def test_load_command_whitelist(tmp_path):
@@ -32,6 +27,8 @@ whitelist = ["/allowed", "/another"]
         ("/allowed", True),
         ("/allowed extra args", True),
         ("/allowed@bot", True),
+        ("/@bot", True),
+        ("/", True),
         ("/blocked", False),
         (" /blocked ", False),
     ],

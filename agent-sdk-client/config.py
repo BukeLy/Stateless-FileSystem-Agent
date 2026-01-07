@@ -22,7 +22,8 @@ def extract_command(text: Optional[str]) -> Optional[str]:
     command = trimmed.split()[0]
     if '@' in command:
         command = command.split('@', 1)[0]
-    if not command:
+    command = command.strip()
+    if not command or command == '/':
         return None
     return command
 
