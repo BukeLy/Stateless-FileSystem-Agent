@@ -41,7 +41,10 @@ def load_command_whitelist(config_path: Path = DEFAULT_CONFIG_PATH) -> list[str]
             data = tomllib.load(f)
         whitelist = data.get('white_list_commands', {}).get('whitelist', [])
         if isinstance(whitelist, list):
-            return [cmd for cmd in whitelist if isinstance(cmd, str)]
+            commands = [cmd for cmd in whitelist if isinstance(cmd, str)]
+            if len(commands) != len(whitelist):
+                logger.warning("Ignoring non-string entries in command whitelist")
+            return commands
     except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - defensive logging
         logger.warning("Failed to load command whitelist: %s", exc)
     return []
