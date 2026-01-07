@@ -19,11 +19,7 @@ def extract_command(text: Optional[str]) -> Optional[str]:
     if not trimmed.startswith('/'):
         return None
 
-    parts = trimmed.split()
-    if not parts:
-        return None
-
-    command = parts[0]
+    command = trimmed.split()[0]
     if '@' in command:
         command = command.split('@', 1)[0]
     if not command:
@@ -40,11 +36,14 @@ def load_command_whitelist(config_path: Path = DEFAULT_CONFIG_PATH) -> list[str]
         with config_path.open('rb') as f:
             data = tomllib.load(f)
         whitelist = data.get('white_list_commands', {}).get('whitelist', [])
-        if isinstance(whitelist, list):
-            commands = [cmd for cmd in whitelist if isinstance(cmd, str)]
-            if len(commands) != len(whitelist):
-                logger.warning("Ignoring non-string entries in command whitelist")
-            return commands
+        if not isinstance(whitelist, list):
+            logger.warning("Command whitelist is not a list; ignoring configuration")
+            return []
+
+        commands = [cmd for cmd in whitelist if isinstance(cmd, str)]
+        if len(commands) != len(whitelist):
+            logger.warning("Ignoring non-string entries in command whitelist")
+        return commands
     except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - defensive logging
         logger.warning("Failed to load command whitelist: %s", exc)
     return []

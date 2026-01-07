@@ -1,13 +1,17 @@
-import sys
+import importlib.util
 from pathlib import Path
 
 import pytest
 
-CLIENT_DIR = Path(__file__).resolve().parent.parent / "agent-sdk-client"
-if str(CLIENT_DIR) not in sys.path:
-    sys.path.append(str(CLIENT_DIR))
+CLIENT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent-sdk-client" / "config.py"
 
-from config import Config, load_command_whitelist  # noqa: E402
+spec = importlib.util.spec_from_file_location("client_config", CLIENT_CONFIG_PATH)
+config_module = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(config_module)
+
+Config = config_module.Config
+load_command_whitelist = config_module.load_command_whitelist
 
 
 def test_load_command_whitelist(tmp_path):
