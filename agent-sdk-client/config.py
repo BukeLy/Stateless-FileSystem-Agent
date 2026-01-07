@@ -41,7 +41,7 @@ def load_command_whitelist(config_path: Path = DEFAULT_CONFIG_PATH) -> list[str]
         if isinstance(whitelist, list):
             return [cmd for cmd in whitelist if isinstance(cmd, str)]
     except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - defensive logging
-        logger.warning(f"Failed to load command whitelist: {exc}")
+        logger.warning("Failed to load command whitelist: %s", exc)
     return []
 
 
