@@ -56,17 +56,24 @@ async def process_message(message_data: dict) -> None:
         return
 
     if not config.is_command_allowed(message.text):
+        # Defensive guard: producer should already block non-whitelisted commands.
         logger.info(
-            "Skipping non-whitelisted command",
+            "Skipping non-whitelisted command (consumer fallback)",
             extra={
                 'chat_id': message.chat_id,
                 'message_id': message.message_id,
             },
         )
+        allowed = config.command_whitelist
+        if allowed:
+            allowed_list = "\n".join(allowed)
+            text = f"Unsupported command. Allowed commands:\n{allowed_list}"
+        else:
+            text = "Unsupported command."
         try:
             await bot.send_message(
                 chat_id=message.chat_id,
-                text="Unsupported command.",
+                text=text,
                 message_thread_id=message.message_thread_id,
                 reply_to_message_id=message.message_id,
             )

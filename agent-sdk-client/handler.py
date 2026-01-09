@@ -116,7 +116,7 @@ def _send_to_sqs_safe(sqs, queue_url: str, message_body: dict) -> bool:
             f"Unexpected error sending to SQS: {e}",
             extra={'exception_type': type(e).__name__},
         )
-            _send_metric('SQSError.Unexpected')
+        _send_metric('SQSError.Unexpected')
         return False
 
 
