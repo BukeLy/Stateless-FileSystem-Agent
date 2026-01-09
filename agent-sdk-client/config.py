@@ -28,26 +28,34 @@ def extract_command(text: Optional[str]) -> Optional[str]:
     return command
 
 
-def load_command_whitelist(config_path: Path = DEFAULT_CONFIG_PATH) -> list[str]:
-    """Load command whitelist from TOML config file."""
+def _load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[list[str], dict[str, str]]:
+    """Load agent/local commands from TOML config file."""
     if not config_path.exists():
-        return []
+        return [], {}
 
     try:
         with config_path.open('rb') as f:
             data = tomllib.load(f)
-        whitelist = data.get('white_list_commands', {}).get('whitelist', [])
-        if not isinstance(whitelist, list):
-            logger.warning("Command whitelist is not a list; ignoring configuration")
-            return []
+        agent_commands = data.get('agent_commands', {}).get('commands', [])
+        if not isinstance(agent_commands, list):
+            logger.warning("Agent commands config is not a list; ignoring configuration")
+            agent_commands = []
+        agent_commands = [cmd for cmd in agent_commands if isinstance(cmd, str)]
 
-        commands = [cmd for cmd in whitelist if isinstance(cmd, str)]
-        if len(commands) != len(whitelist):
-            logger.warning("Ignoring non-string entries in command whitelist")
-        return commands
+        local_commands_raw = data.get('local_commands', {})
+        if not isinstance(local_commands_raw, dict):
+            logger.warning("Local commands config is not a table; ignoring configuration")
+            local_commands_raw = {}
+        local_commands = {
+            f"/{name.lstrip('/')}" if not name.startswith('/') else name: str(value)
+            for name, value in local_commands_raw.items()
+            if isinstance(name, str) and isinstance(value, str)
+        }
+
+        return agent_commands, local_commands
     except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - defensive logging
-        logger.warning("Failed to load command whitelist: %s", exc)
-    return []
+        logger.warning("Failed to load command configuration: %s", exc)
+    return [], {}
 
 
 @dataclass
@@ -58,22 +66,40 @@ class Config:
     agent_server_url: str
     auth_token: str
     queue_url: str
-    command_whitelist: list[str]
+    agent_commands: list[str]
+    local_commands: dict[str, str]
 
     @classmethod
     def from_env(cls, config_path: Optional[Path] = None) -> 'Config':
         """Load configuration from environment variables."""
+        agent_cmds, local_cmds = _load_config(config_path or DEFAULT_CONFIG_PATH)
         return cls(
             telegram_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
             agent_server_url=os.getenv('AGENT_SERVER_URL', ''),
             auth_token=os.getenv('SDK_CLIENT_AUTH_TOKEN', 'default-token'),
             queue_url=os.getenv('QUEUE_URL', ''),
-            command_whitelist=load_command_whitelist(config_path or DEFAULT_CONFIG_PATH),
+            agent_commands=agent_cmds,
+            local_commands=local_cmds,
         )
 
-    def is_command_allowed(self, text: Optional[str]) -> bool:
-        """Check whether text should be forwarded to Agent backend."""
-        command = extract_command(text)
-        if command is None:
-            return True
-        return command in self.command_whitelist
+    def get_command(self, text: Optional[str]) -> Optional[str]:
+        return extract_command(text)
+
+    def is_agent_command(self, cmd: Optional[str]) -> bool:
+        return bool(cmd) and cmd in self.agent_commands
+
+    def is_local_command(self, cmd: Optional[str]) -> bool:
+        return bool(cmd) and cmd in self.local_commands
+
+    def local_response(self, cmd: str) -> str:
+        return self.local_commands.get(cmd, "Unsupported command.")
+
+    def unknown_command_message(self) -> str:
+        parts = []
+        if self.agent_commands:
+            parts.append("Agent commands:\n" + "\n".join(self.agent_commands))
+        if self.local_commands:
+            parts.append("Local commands:\n" + "\n".join(self.local_commands.keys()))
+        if not parts:
+            return "Unsupported command."
+        return "Unsupported command.\n\n" + "\n\n".join(parts)

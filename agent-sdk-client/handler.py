@@ -120,17 +120,12 @@ def _send_to_sqs_safe(sqs, queue_url: str, message_body: dict) -> bool:
         return False
 
 
-def _handle_local_command(bot: Bot, message, config: Config) -> bool:
-    """Handle non-whitelisted commands locally to give user feedback."""
-    if config.is_command_allowed(message.text):
-        return False
-
-    allowed = config.command_whitelist
-    if allowed:
-        allowed_list = "\n".join(allowed)
-        text = f"Unsupported command. Allowed commands:\n{allowed_list}"
+def _handle_local_command(bot: Bot, message, config: Config, cmd: str) -> bool:
+    """Handle local commands or unknown commands."""
+    if config.is_local_command(cmd):
+        text = config.local_response(cmd)
     else:
-        text = "Unsupported command."
+        text = config.unknown_command_message()
 
     try:
         bot.send_message(
@@ -179,7 +174,13 @@ def lambda_handler(event: dict, context: Any) -> dict:
         logger.debug('Ignoring webhook without text message')
         return {'statusCode': 200}
 
-    if _handle_local_command(bot, message, config):
+    cmd = config.get_command(message.text)
+    if cmd and config.is_local_command(cmd):
+        _handle_local_command(bot, message, config, cmd)
+        return {'statusCode': 200}
+
+    if cmd and not config.is_agent_command(cmd):
+        _handle_local_command(bot, message, config, cmd)
         return {'statusCode': 200}
 
     # Write to SQS for async processing

@@ -1,6 +1,10 @@
-[white_list_commands]
-# Only commands in this whitelist will be forwarded to the Agent backend
-whitelist = [
+[agent_commands]
+# Commands forwarded to the Agent backend
+commands = [
     "/custom-skill",
     "/hello-world",
 ]
+
+[local_commands]
+# Local-only commands handled by the client
+help = "Hello World"
