@@ -120,6 +120,33 @@ def _send_to_sqs_safe(sqs, queue_url: str, message_body: dict) -> bool:
         return False
 
 
+def _handle_local_command(bot: Bot, message, config: Config, cmd: str) -> bool:
+    """Handle local commands or unknown commands."""
+    if config.is_local_command(cmd):
+        text = config.local_response(cmd)
+    else:
+        text = config.unknown_command_message()
+
+    try:
+        bot.send_message(
+            chat_id=message.chat_id,
+            text=text,
+            message_thread_id=message.message_thread_id,
+            reply_to_message_id=message.message_id,
+        )
+    except Exception:
+        logger.warning("Failed to send local command response", exc_info=True)
+
+    logger.info(
+        'Handled non-whitelisted command locally',
+        extra={
+            'chat_id': message.chat_id,
+            'message_id': message.message_id,
+        },
+    )
+    return True
+
+
 def lambda_handler(event: dict, context: Any) -> dict:
     """Lambda entry point - Producer.
 
@@ -145,6 +172,15 @@ def lambda_handler(event: dict, context: Any) -> dict:
     message = update.message or update.edited_message
     if not message or not message.text:
         logger.debug('Ignoring webhook without text message')
+        return {'statusCode': 200}
+
+    cmd = config.get_command(message.text)
+    if cmd and config.is_local_command(cmd):
+        _handle_local_command(bot, message, config, cmd)
+        return {'statusCode': 200}
+
+    if cmd and not config.is_agent_command(cmd):
+        _handle_local_command(bot, message, config, cmd)
         return {'statusCode': 200}
 
     # Write to SQS for async processing

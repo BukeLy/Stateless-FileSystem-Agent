@@ -55,6 +55,44 @@ async def process_message(message_data: dict) -> None:
         logger.warning("Received update with no message or edited_message")
         return
 
+    cmd = config.get_command(message.text)
+    if cmd:
+        if config.is_local_command(cmd):
+            logger.info(
+                "Handling local command in consumer (fallback path)",
+                extra={'chat_id': message.chat_id, 'message_id': message.message_id},
+            )
+            try:
+                await bot.send_message(
+                    chat_id=message.chat_id,
+                    text=config.local_response(cmd),
+                    message_thread_id=message.message_thread_id,
+                    reply_to_message_id=message.message_id,
+                )
+            except Exception:
+                logger.warning("Failed to send local command response", exc_info=True)
+            return
+
+        if not config.is_agent_command(cmd):
+            # Defensive guard: producer should already block non-agent commands.
+            logger.info(
+                "Skipping non-agent command (consumer fallback)",
+                extra={
+                    'chat_id': message.chat_id,
+                    'message_id': message.message_id,
+                },
+            )
+            try:
+                await bot.send_message(
+                    chat_id=message.chat_id,
+                    text=config.unknown_command_message(),
+                    message_thread_id=message.message_thread_id,
+                    reply_to_message_id=message.message_id,
+                )
+            except Exception:
+                logger.warning("Failed to send local command response", exc_info=True)
+            return
+
     # Send typing indicator
     await bot.send_chat_action(
         chat_id=message.chat_id,
