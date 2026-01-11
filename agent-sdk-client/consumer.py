@@ -43,6 +43,7 @@ async def process_message(message_data: dict) -> None:
     """Process single message from SQS queue."""
     import logging
     logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
     config = Config.from_env()
     bot = Bot(config.telegram_token)
@@ -162,23 +163,40 @@ async def process_message(message_data: dict) -> None:
         text = text[:4000] + "\n\n... (truncated)"
 
     # Send response to Telegram
+    # Only reply to original message if we're in the same thread
+    reply_to_id = (
+        message.message_id
+        if thread_id == message.message_thread_id
+        else None
+    )
+    
     try:
         await bot.send_message(
             chat_id=message.chat_id,
             text=text,
             parse_mode=ParseMode.MARKDOWN_V2,
             message_thread_id=thread_id,
-            reply_to_message_id=message.message_id,
+            reply_to_message_id=reply_to_id,
+        )
+        logger.info(
+            f"Message sent successfully to chat_id={message.chat_id}, "
+            f"thread_id={thread_id}, reply_to={reply_to_id}"
         )
     except BadRequest as e:
         if "parse entities" in str(e).lower():
+            logger.warning(f"Markdown parse error, retrying with escaped text: {e}")
             safe_text = escape_markdown(text, version=2)
             await bot.send_message(
                 chat_id=message.chat_id,
                 text=safe_text,
                 parse_mode=ParseMode.MARKDOWN_V2,
                 message_thread_id=thread_id,
-                reply_to_message_id=message.message_id,
+                reply_to_message_id=reply_to_id,
+            )
+            logger.info(
+                f"Message sent successfully (escaped) to chat_id={message.chat_id}, "
+                f"thread_id={thread_id}, reply_to={reply_to_id}"
             )
         else:
+            logger.error(f"Failed to send message: {e}")
             raise
