@@ -280,12 +280,18 @@ def lambda_handler(event: dict, context: Any) -> dict:
                 'administrator',
             ):
                 chat_id = member_update.chat.id
-                is_ok, error_msg = asyncio.run(
-                    _check_forum_requirements(bot, chat_id)
-                )
-                if not is_ok:
-                    asyncio.run(bot.send_message(chat_id=chat_id, text=error_msg))
-                    _send_metric('TopicPrecheck.Failed')
+
+                async def _run_topic_precheck():
+                    is_ok, error_msg = await _check_forum_requirements(bot, chat_id)
+                    if not is_ok:
+                        await bot.send_message(chat_id=chat_id, text=error_msg)
+                        logger.warning(
+                            "Forum requirements check failed",
+                            extra={'chat_id': chat_id, 'error_msg': error_msg},
+                        )
+                        _send_metric('TopicPrecheck.Failed')
+
+                asyncio.run(_run_topic_precheck())
         return {'statusCode': 200}
 
     message = update.message or update.edited_message
@@ -303,6 +309,10 @@ def lambda_handler(event: dict, context: Any) -> dict:
             )
             _send_metric('SecurityBlock.UnauthorizedPrivate')
             return {'statusCode': 200}
+
+    # 群组消息：非 Forum 直接忽略（用户入群时已收到预检提示）
+    if message.chat.type in ('group', 'supergroup') and not message.chat.is_forum:
+        return {'statusCode': 200}
 
     cmd = config.get_command(message.text)
 
