@@ -8,6 +8,7 @@ commands = [
 [local_commands]
 # Local-only commands handled by the client
 help = "Hello World"
+newchat = "创建新对话"
 
 [security]
 # User IDs allowed to add bot to groups and send private messages.
