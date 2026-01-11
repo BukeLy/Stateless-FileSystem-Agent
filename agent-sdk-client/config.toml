@@ -8,3 +8,9 @@ commands = [
 [local_commands]
 # Local-only commands handled by the client
 help = "Hello World"
+
+[security]
+# User IDs allowed to add bot to groups and send private messages.
+# Use ["all"] to allow everyone (default behavior).
+# Example with specific users: user_whitelist = [123456789, 987654321]
+user_whitelist = ["all"]

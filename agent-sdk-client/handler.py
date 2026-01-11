@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 from telegram import Bot, Update
 
 from config import Config
+from security import is_user_allowed, should_leave_group
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -172,10 +173,34 @@ def lambda_handler(event: dict, context: Any) -> dict:
         logger.debug('Ignoring non-update webhook')
         return {'statusCode': 200}
 
+    # Handle my_chat_member event (bot added to group)
+    if update.my_chat_member:
+        if should_leave_group(update, config.user_whitelist):
+            chat_id = update.my_chat_member.chat.id
+            inviter_id = update.my_chat_member.from_user.id
+            asyncio.run(bot.leave_chat(chat_id))
+            logger.info(
+                f"Left unauthorized group",
+                extra={'chat_id': chat_id, 'inviter_id': inviter_id},
+            )
+            _send_metric('SecurityBlock.UnauthorizedGroup')
+        return {'statusCode': 200}
+
     message = update.message or update.edited_message
     if not message or not message.text:
         logger.debug('Ignoring webhook without text message')
         return {'statusCode': 200}
+
+    # Check private message whitelist
+    if message.chat.type == 'private':
+        user_id = message.from_user.id if message.from_user else None
+        if user_id and not is_user_allowed(user_id, config.user_whitelist):
+            logger.info(
+                f"Blocked private message from unauthorized user",
+                extra={'user_id': user_id},
+            )
+            _send_metric('SecurityBlock.UnauthorizedPrivate')
+            return {'statusCode': 200}
 
     cmd = config.get_command(message.text)
     if cmd and config.is_local_command(cmd):
