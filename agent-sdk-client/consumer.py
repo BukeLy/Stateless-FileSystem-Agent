@@ -56,6 +56,10 @@ async def process_message(message_data: dict) -> None:
         logger.warning("Received update with no message or edited_message")
         return
 
+    # Use message_data fields for SQS message (allows handler to override text/thread_id)
+    user_message = message_data.get('text') or message.text
+    thread_id = message_data.get('thread_id') or message.message_thread_id
+
     cmd = config.get_command(message.text)
     if cmd:
         if config.is_local_command(cmd):
@@ -63,12 +67,18 @@ async def process_message(message_data: dict) -> None:
                 "Handling local command in consumer (fallback path)",
                 extra={'chat_id': message.chat_id, 'message_id': message.message_id},
             )
+            # Only reply to original message if we're in the same thread
+            reply_to_id = (
+                message.message_id
+                if thread_id == message.message_thread_id
+                else None
+            )
             try:
                 await bot.send_message(
                     chat_id=message.chat_id,
                     text=config.local_response(cmd),
-                    message_thread_id=message.message_thread_id,
-                    reply_to_message_id=message.message_id,
+                    message_thread_id=thread_id,
+                    reply_to_message_id=reply_to_id,
                 )
             except Exception:
                 logger.warning("Failed to send local command response", exc_info=True)
@@ -83,12 +93,18 @@ async def process_message(message_data: dict) -> None:
                     'message_id': message.message_id,
                 },
             )
+            # Only reply to original message if we're in the same thread
+            reply_to_id = (
+                message.message_id
+                if thread_id == message.message_thread_id
+                else None
+            )
             try:
                 await bot.send_message(
                     chat_id=message.chat_id,
                     text=config.unknown_command_message(),
-                    message_thread_id=message.message_thread_id,
-                    reply_to_message_id=message.message_id,
+                    message_thread_id=thread_id,
+                    reply_to_message_id=reply_to_id,
                 )
             except Exception:
                 logger.warning("Failed to send local command response", exc_info=True)
@@ -98,7 +114,7 @@ async def process_message(message_data: dict) -> None:
     await bot.send_chat_action(
         chat_id=message.chat_id,
         action=ChatAction.TYPING,
-        message_thread_id=message.message_thread_id,
+        message_thread_id=thread_id,
     )
 
     # Initialize result with default error response
@@ -108,10 +124,6 @@ async def process_message(message_data: dict) -> None:
         'is_error': True,
         'error_message': 'Failed to get response from Agent Server'
     }
-
-    # Use message_data fields for SQS message (allows handler to override text/thread_id)
-    user_message = message_data.get('text') or message.text
-    thread_id = message_data.get('thread_id') or message.message_thread_id
 
     # Call Agent Server
     try:
