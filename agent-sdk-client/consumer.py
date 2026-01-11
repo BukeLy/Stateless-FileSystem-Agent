@@ -154,21 +154,25 @@ async def process_message(message_data: dict) -> None:
 
     except httpx.TimeoutException:
         logger.warning(f"Agent Server timeout for chat_id={message.chat_id}")
+        reply_to_id = _get_reply_to_id(message.message_id, thread_id, message.message_thread_id)
         await bot.send_message(
             chat_id=message.chat_id,
             text="Request timed out.",
             message_thread_id=thread_id,
+            reply_to_message_id=reply_to_id,
         )
         raise  # Re-raise to trigger SQS retry for transient errors
 
     except Exception as e:
         logger.exception(f"Agent Server error for chat_id={message.chat_id}")
         error_text = f"Error: {str(e)[:200]}"
+        reply_to_id = _get_reply_to_id(message.message_id, thread_id, message.message_thread_id)
         try:
             await bot.send_message(
                 chat_id=message.chat_id,
                 text=error_text,
                 message_thread_id=thread_id,
+                reply_to_message_id=reply_to_id,
             )
         except Exception as send_error:
             logger.error(f"Failed to send error message to Telegram: {send_error}")
