@@ -15,6 +15,23 @@ from telegram.error import BadRequest
 from config import Config
 
 
+def _get_reply_to_id(message_id: int, thread_id: int | None, message_thread_id: int | None) -> int | None:
+    """Determine if we should reply to the original message.
+    
+    Only reply to the original message if we're in the same thread.
+    This prevents Telegram API errors when sending to a different thread (e.g., /newchat).
+    
+    Args:
+        message_id: The original message ID
+        thread_id: The target thread ID (may be overridden by handler)
+        message_thread_id: The original message's thread ID
+        
+    Returns:
+        message_id if in same thread, None otherwise
+    """
+    return message_id if thread_id == message_thread_id else None
+
+
 def lambda_handler(event: dict, context: Any) -> dict:
     """SQS Consumer Lambda entry point."""
     for record in event['Records']:
@@ -43,6 +60,7 @@ async def process_message(message_data: dict) -> None:
     """Process single message from SQS queue."""
     import logging
     logger = logging.getLogger()
+    # Enable INFO logging as suggested in issue for better debugging
     logger.setLevel(logging.INFO)
 
     config = Config.from_env()
@@ -56,7 +74,8 @@ async def process_message(message_data: dict) -> None:
         logger.warning("Received update with no message or edited_message")
         return
 
-    # Use message_data fields for SQS message (allows handler to override text/thread_id)
+    # Extract thread_id and user_message early - needed for all message processing
+    # (allows handler to override text/thread_id via SQS message_data)
     user_message = message_data.get('text') or message.text
     thread_id = message_data.get('thread_id') or message.message_thread_id
 
@@ -67,12 +86,7 @@ async def process_message(message_data: dict) -> None:
                 "Handling local command in consumer (fallback path)",
                 extra={'chat_id': message.chat_id, 'message_id': message.message_id},
             )
-            # Only reply to original message if we're in the same thread
-            reply_to_id = (
-                message.message_id
-                if thread_id == message.message_thread_id
-                else None
-            )
+            reply_to_id = _get_reply_to_id(message.message_id, thread_id, message.message_thread_id)
             try:
                 await bot.send_message(
                     chat_id=message.chat_id,
@@ -93,12 +107,7 @@ async def process_message(message_data: dict) -> None:
                     'message_id': message.message_id,
                 },
             )
-            # Only reply to original message if we're in the same thread
-            reply_to_id = (
-                message.message_id
-                if thread_id == message.message_thread_id
-                else None
-            )
+            reply_to_id = _get_reply_to_id(message.message_id, thread_id, message.message_thread_id)
             try:
                 await bot.send_message(
                     chat_id=message.chat_id,
@@ -175,12 +184,7 @@ async def process_message(message_data: dict) -> None:
         text = text[:4000] + "\n\n... (truncated)"
 
     # Send response to Telegram
-    # Only reply to original message if we're in the same thread
-    reply_to_id = (
-        message.message_id
-        if thread_id == message.message_thread_id
-        else None
-    )
+    reply_to_id = _get_reply_to_id(message.message_id, thread_id, message.message_thread_id)
     
     try:
         await bot.send_message(
