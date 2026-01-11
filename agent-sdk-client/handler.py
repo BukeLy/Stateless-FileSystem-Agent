@@ -129,18 +129,14 @@ def _handle_local_command(bot: Bot, message, config: Config, cmd: str) -> bool:
         text = config.unknown_command_message()
 
     try:
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(
-                bot.send_message(
-                    chat_id=message.chat_id,
-                    text=text,
-                    message_thread_id=message.message_thread_id,
-                    reply_to_message_id=message.message_id,
-                )
+        asyncio.run(
+            bot.send_message(
+                chat_id=message.chat_id,
+                text=text,
+                message_thread_id=message.message_thread_id,
+                reply_to_message_id=message.message_id,
             )
-        finally:
-            loop.close()
+        )
     except Exception:
         logger.warning("Failed to send local command response", exc_info=True)
 
