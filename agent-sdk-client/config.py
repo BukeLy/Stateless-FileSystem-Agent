@@ -28,20 +28,27 @@ def extract_command(text: Optional[str]) -> Optional[str]:
     return command
 
 
-def _load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[list[str], dict[str, str]]:
-    """Load agent/local commands from TOML config file."""
+def _load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[list[str], dict[str, str], list[int | str]]:
+    """Load commands and security config from TOML config file.
+
+    Returns:
+        Tuple of (agent_commands, local_commands, user_whitelist).
+    """
     if not config_path.exists():
-        return [], {}
+        return [], {}, ['all']
 
     try:
         with config_path.open('rb') as f:
             data = tomllib.load(f)
+
+        # Load agent commands
         agent_commands = data.get('agent_commands', {}).get('commands', [])
         if not isinstance(agent_commands, list):
             logger.warning("Agent commands config is not a list; ignoring configuration")
             agent_commands = []
         agent_commands = [cmd for cmd in agent_commands if isinstance(cmd, str)]
 
+        # Load local commands
         local_commands_raw = data.get('local_commands', {})
         if not isinstance(local_commands_raw, dict):
             logger.warning("Local commands config is not a table; ignoring configuration")
@@ -52,10 +59,28 @@ def _load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[list[str], di
             if isinstance(name, str) and isinstance(value, str)
         }
 
-        return agent_commands, local_commands
+        # Load security whitelist
+        security = data.get('security', {})
+        whitelist = security.get('user_whitelist', ['all'])
+        if not isinstance(whitelist, list):
+            logger.warning("user_whitelist is not a list; using default ['all']")
+            whitelist = ['all']
+        else:
+            validated = []
+            for item in whitelist:
+                if item == 'all':
+                    validated.append('all')
+                elif isinstance(item, int):
+                    validated.append(item)
+                else:
+                    logger.warning(f"Invalid whitelist entry: {item}; skipping")
+            whitelist = validated if validated else ['all']
+
+        return agent_commands, local_commands, whitelist
+
     except (OSError, tomllib.TOMLDecodeError) as exc:  # pragma: no cover - defensive logging
-        logger.warning("Failed to load command configuration: %s", exc)
-    return [], {}
+        logger.warning("Failed to load configuration: %s", exc)
+    return [], {}, ['all']
 
 
 @dataclass
@@ -68,11 +93,12 @@ class Config:
     queue_url: str
     agent_commands: list[str]
     local_commands: dict[str, str]
+    user_whitelist: list[int | str]
 
     @classmethod
     def from_env(cls, config_path: Optional[Path] = None) -> 'Config':
         """Load configuration from environment variables."""
-        agent_cmds, local_cmds = _load_config(config_path or DEFAULT_CONFIG_PATH)
+        agent_cmds, local_cmds, whitelist = _load_config(config_path or DEFAULT_CONFIG_PATH)
         return cls(
             telegram_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
             agent_server_url=os.getenv('AGENT_SERVER_URL', ''),
@@ -80,6 +106,7 @@ class Config:
             queue_url=os.getenv('QUEUE_URL', ''),
             agent_commands=agent_cmds,
             local_commands=local_cmds,
+            user_whitelist=whitelist,
         )
 
     def get_command(self, text: Optional[str]) -> Optional[str]:
