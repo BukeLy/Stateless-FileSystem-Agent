@@ -108,6 +108,10 @@ async def process_message(message_data: dict) -> None:
         'error_message': 'Failed to get response from Agent Server'
     }
 
+    # Use message_data fields for SQS message (allows handler to override text/thread_id)
+    user_message = message_data.get('text') or message.text
+    thread_id = message_data.get('thread_id') or message.message_thread_id
+
     # Call Agent Server
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
@@ -118,9 +122,9 @@ async def process_message(message_data: dict) -> None:
                     'Content-Type': 'application/json',
                 },
                 json={
-                    'user_message': message.text,
+                    'user_message': user_message,
                     'chat_id': str(message.chat_id),
-                    'thread_id': str(message.message_thread_id) if message.message_thread_id else None,
+                    'thread_id': str(thread_id) if thread_id else None,
                 },
             )
             response.raise_for_status()
@@ -131,7 +135,7 @@ async def process_message(message_data: dict) -> None:
         await bot.send_message(
             chat_id=message.chat_id,
             text="Request timed out.",
-            message_thread_id=message.message_thread_id,
+            message_thread_id=thread_id,
         )
         raise  # Re-raise to trigger SQS retry for transient errors
 
@@ -142,7 +146,7 @@ async def process_message(message_data: dict) -> None:
             await bot.send_message(
                 chat_id=message.chat_id,
                 text=error_text,
-                message_thread_id=message.message_thread_id,
+                message_thread_id=thread_id,
             )
         except Exception as send_error:
             logger.error(f"Failed to send error message to Telegram: {send_error}")
@@ -163,7 +167,7 @@ async def process_message(message_data: dict) -> None:
             chat_id=message.chat_id,
             text=text,
             parse_mode=ParseMode.MARKDOWN_V2,
-            message_thread_id=message.message_thread_id,
+            message_thread_id=thread_id,
             reply_to_message_id=message.message_id,
         )
     except BadRequest as e:
@@ -173,7 +177,7 @@ async def process_message(message_data: dict) -> None:
                 chat_id=message.chat_id,
                 text=safe_text,
                 parse_mode=ParseMode.MARKDOWN_V2,
-                message_thread_id=message.message_thread_id,
+                message_thread_id=thread_id,
                 reply_to_message_id=message.message_id,
             )
         else:
