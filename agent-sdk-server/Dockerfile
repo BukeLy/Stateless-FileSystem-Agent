@@ -7,11 +7,16 @@ WORKDIR ${LAMBDA_TASK_ROOT}
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN ln -s /usr/local/bin/uv /usr/local/bin/uvx
 
-# Install Claude Code CLI (npm package, requires nodejs)
-# hadolint ignore=DL3016,DL3041
-RUN dnf install -y nodejs npm && \
+# Install Node.js 20+ (required for MCP's undici dependency)
+# hadolint ignore=DL3016,DL3041,DL4006
+RUN curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - && \
+    dnf install -y nodejs && \
     dnf clean all && \
     npm install -g @anthropic-ai/claude-code
+
+# Fix npm cache permissions for Lambda
+RUN mkdir -p /tmp/.npm && chmod -R 777 /tmp/.npm
+ENV npm_config_cache=/tmp/.npm
 
 # Install Python dependencies
 RUN uv pip install --system boto3 claude-agent-sdk
