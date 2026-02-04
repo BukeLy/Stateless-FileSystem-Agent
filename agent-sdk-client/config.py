@@ -6,6 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+
+@dataclass
+class LocalCommand:
+    """Local command configuration."""
+    type: str  # "static" or "handler"
+    response: str = ""  # for static type
+    handler: str = ""  # for handler type
+
 logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = Path(__file__).with_name("config.toml")
 
@@ -28,7 +36,46 @@ def extract_command(text: Optional[str]) -> Optional[str]:
     return command
 
 
-def _load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[list[str], dict[str, str], list[int | str]]:
+def _parse_local_command(name: str, value) -> tuple[str, LocalCommand | None]:
+    """Parse a single local command entry.
+
+    Args:
+        name: Command name (with or without leading slash)
+        value: Command value (string for legacy, dict for new format)
+
+    Returns:
+        Tuple of (normalized_cmd, LocalCommand) or (normalized_cmd, None) if invalid
+    """
+    cmd = f"/{name.lstrip('/')}" if not name.startswith('/') else name
+
+    # Legacy format: string value = static response
+    if isinstance(value, str):
+        return cmd, LocalCommand(type="static", response=value)
+
+    # New format: dict with type field
+    if isinstance(value, dict):
+        cmd_type = value.get('type', '')
+        if cmd_type == 'static':
+            response = value.get('response', '')
+            if not response:
+                logger.warning(f"Local command {cmd} has no response; skipping")
+                return cmd, None
+            return cmd, LocalCommand(type="static", response=response)
+        elif cmd_type == 'handler':
+            handler = value.get('handler', '')
+            if not handler:
+                logger.warning(f"Local command {cmd} has no handler; skipping")
+                return cmd, None
+            return cmd, LocalCommand(type="handler", handler=handler)
+        else:
+            logger.warning(f"Local command {cmd} has unknown type: {cmd_type}; skipping")
+            return cmd, None
+
+    logger.warning(f"Local command {cmd} has invalid value type; skipping")
+    return cmd, None
+
+
+def _load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[list[str], dict[str, LocalCommand], list[int | str]]:
     """Load commands and security config from TOML config file.
 
     Returns:
@@ -48,16 +95,18 @@ def _load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[list[str], di
             agent_commands = []
         agent_commands = [cmd for cmd in agent_commands if isinstance(cmd, str)]
 
-        # Load local commands
+        # Load local commands (supports both legacy string and new dict format)
         local_commands_raw = data.get('local_commands', {})
         if not isinstance(local_commands_raw, dict):
             logger.warning("Local commands config is not a table; ignoring configuration")
             local_commands_raw = {}
-        local_commands = {
-            f"/{name.lstrip('/')}" if not name.startswith('/') else name: str(value)
-            for name, value in local_commands_raw.items()
-            if isinstance(name, str) and isinstance(value, str)
-        }
+        local_commands: dict[str, LocalCommand] = {}
+        for name, value in local_commands_raw.items():
+            if not isinstance(name, str):
+                continue
+            cmd, parsed = _parse_local_command(name, value)
+            if parsed:
+                local_commands[cmd] = parsed
 
         # Load security whitelist
         security = data.get('security', {})
@@ -92,8 +141,9 @@ class Config:
     auth_token: str
     queue_url: str
     agent_commands: list[str]
-    local_commands: dict[str, str]
+    local_commands: dict[str, LocalCommand]
     user_whitelist: list[int | str]
+    telegram_webhook_secret: str = ""
 
     @classmethod
     def from_env(cls, config_path: Optional[Path] = None) -> 'Config':
@@ -107,6 +157,7 @@ class Config:
             agent_commands=agent_cmds,
             local_commands=local_cmds,
             user_whitelist=whitelist,
+            telegram_webhook_secret=os.getenv('TELEGRAM_WEBHOOK_SECRET', ''),
         )
 
     def get_command(self, text: Optional[str]) -> Optional[str]:
@@ -118,8 +169,16 @@ class Config:
     def is_local_command(self, cmd: Optional[str]) -> bool:
         return bool(cmd) and cmd in self.local_commands
 
+    def get_local_command(self, cmd: str) -> LocalCommand | None:
+        """Get local command config by command name."""
+        return self.local_commands.get(cmd)
+
     def local_response(self, cmd: str) -> str:
-        return self.local_commands.get(cmd, "Unsupported command.")
+        """Get static response for a local command (legacy compatibility)."""
+        local_cmd = self.local_commands.get(cmd)
+        if local_cmd and local_cmd.type == "static":
+            return local_cmd.response
+        return "Unsupported command."
 
     def unknown_command_message(self) -> str:
         parts = []

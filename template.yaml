@@ -31,6 +31,11 @@ Parameters:
     Default: ''
     Description: "(Optional) ARN for Bedrock Opus 4.5 model"
     NoEcho: true
+  TelegramWebhookSecret:
+    Type: String
+    Default: ''
+    Description: "(Optional) Secret token for Telegram webhook verification"
+    NoEcho: true
 
 Globals:
   Function:
@@ -67,22 +72,28 @@ Resources:
         AttributeName: ttl
         Enabled: true
 
-  # SQS Task Queue
+  # SQS Task Queue (FIFO for session message ordering)
   TaskQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub '${AWS::StackName}-TaskQueue'
+      QueueName: !Sub '${AWS::StackName}-TaskQueue.fifo'
+      FifoQueue: true
+      ContentBasedDeduplication: false
+      DeduplicationScope: messageGroup
+      FifoThroughputLimit: perMessageGroupId
       VisibilityTimeout: 900  # 15 minutes = Lambda timeout
       MessageRetentionPeriod: 1209600  # 14 days
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DLQueue.Arn
         maxReceiveCount: 3  # Retry 3 times then move to DLQ
 
-  # Dead Letter Queue
+  # Dead Letter Queue (FIFO to match TaskQueue)
   DLQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub '${AWS::StackName}-DLQueue'
+      QueueName: !Sub '${AWS::StackName}-DLQueue.fifo'
+      FifoQueue: true
+      ContentBasedDeduplication: true
       MessageRetentionPeriod: 1209600  # 14 days
 
   # SNS Topic for alarm notifications
@@ -123,7 +134,6 @@ Resources:
           # Bedrock model ARNs
           ANTHROPIC_DEFAULT_HAIKU_MODEL: !Ref BedrockHaikuModelArn
           ANTHROPIC_DEFAULT_SONNET_MODEL: !Ref BedrockSonnetModelArn
-          ANTHROPIC_DEFAULT_OPUS_4_5_MODEL: !Ref BedrockOpusModelArn
           ANTHROPIC_DEFAULT_OPUS_MODEL: !Ref BedrockOpusModelArn
       Policies:
         - S3CrudPolicy:
@@ -147,6 +157,9 @@ Resources:
           AGENT_SERVER_URL: !GetAtt AgentServerFunctionUrl.FunctionUrl
           SDK_CLIENT_AUTH_TOKEN: !Ref AuthToken
           QUEUE_URL: !Ref TaskQueue
+          TELEGRAM_WEBHOOK_SECRET: !Ref TelegramWebhookSecret
+          SESSION_TABLE: !Ref SessionTable
+          SESSION_BUCKET: !Ref SessionBucket
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt TaskQueue.QueueName
@@ -155,6 +168,10 @@ Resources:
               Action:
                 - cloudwatch:PutMetricData
               Resource: '*'
+        - DynamoDBReadPolicy:
+            TableName: !Ref SessionTable
+        - S3ReadPolicy:
+            BucketName: !Ref SessionBucket
       Events:
         Webhook:
           Type: HttpApi

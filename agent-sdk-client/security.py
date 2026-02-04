@@ -1,5 +1,31 @@
 """Security module for Telegram Bot access control."""
+import hmac
+
 from telegram import Update
+
+
+def verify_telegram_secret_token(
+    request_token: str | None, expected_token: str | None
+) -> bool:
+    """Verify X-Telegram-Bot-Api-Secret-Token header.
+
+    Args:
+        request_token: Token from request header.
+        expected_token: Expected secret token (from env/config).
+
+    Returns:
+        True if token matches or no token configured, False otherwise.
+    """
+    # If no secret token configured, skip verification (backward compatible)
+    if not expected_token:
+        return True
+
+    # If token configured but not provided in request, reject
+    if not request_token:
+        return False
+
+    # Constant-time comparison to prevent timing attacks
+    return hmac.compare_digest(request_token, expected_token)
 
 
 def is_user_allowed(user_id: int, whitelist: list[int | str]) -> bool:
