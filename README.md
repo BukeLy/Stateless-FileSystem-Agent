@@ -17,27 +17,39 @@ A Serverless AI Agent system built on Claude Agent SDK, implementing stateful co
 ## Architecture
 
 ```
-Telegram User → Bot API → API Gateway → Producer Lambda → SQS Queue → Consumer Lambda
-                                              ↓                            ↓
-                                        Return 200              agent-server Lambda
-                                        immediately                        ↓
+Telegram User → Bot API → API Gateway → Producer Lambda → SQS FIFO Queue → Consumer Lambda
+                                              ↓                                  ↓
+                                        Return 200                      agent-server Lambda
+                                        immediately                              ↓
                                               DynamoDB (Session mapping) + S3 (Session files) + Bedrock (Claude)
 ```
 
 **Core Design**:
 - Uses the Hybrid Sessions pattern recommended by Claude Agent SDK
-- **SQS Async Architecture**: Producer returns 200 immediately to Telegram, Consumer processes requests asynchronously
+- **SQS FIFO Async Architecture**: Producer returns 200 immediately to Telegram, Consumer processes requests asynchronously with message ordering guarantee
 
 ## Features
 
 - **Session Persistence**: DynamoDB for mapping storage, S3 for conversation history, cross-request recovery support
 - **Multi-tenant Isolation**: Client isolation based on Telegram chat_id + thread_id
+- **Forum Group Support**: Topic-based conversation isolation with auto-precheck
+- **User Whitelist**: Control private chat and group invitation permissions
 - **SubAgent Support**: Configurable specialized Agents (e.g., AWS support) with example implementations
 - **Skills Support**: Reusable skill modules with hello-world example
-- **MCP Integration**: Support for HTTP and local command-based MCP servers
+- **MCP Integration**: Support for HTTP and local command-based MCP servers (Node.js 20+)
+- **Security**: Telegram Webhook secret token verification (HMAC)
 - **Auto Cleanup**: 25-day TTL + S3 lifecycle management
-- **SQS Queue**: Async processing + auto retry + dead letter queue
+- **SQS FIFO Queue**: Ordered async processing + auto retry + dead letter queue
 - **Quick Start**: Provides example Skill/SubAgent/MCP configurations for adding other components
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/newchat <message>` | Create new Topic in Forum group and start conversation |
+| `/debug` | Download current session files (conversation.jsonl, debug.txt, todos.json) |
+| `/start` | Welcome message (private chat) |
+| `/help` | Show help message |
 
 ## Project Structure
 
@@ -56,7 +68,9 @@ Telegram User → Bot API → API Gateway → Producer Lambda → SQS Queue → 
 ├── agent-sdk-client/          # Telegram Client (ZIP Deployment)
 │   ├── handler.py             # Producer: Webhook receiver, writes to SQS
 │   ├── consumer.py            # Consumer: SQS consumer, calls Agent
-│   └── config.py              # Configuration management
+│   ├── config.py              # Configuration management
+│   ├── config.toml            # Command configuration
+│   └── security.py            # Security utilities
 │
 ├── docs/                      # Documentation
 │   └── anthropic-agent-sdk-official/  # SDK Official Docs Reference
@@ -98,6 +112,7 @@ sam deploy --guided
 | `BEDROCK_SECRET_ACCESS_KEY` | Bedrock secret key |
 | `SDK_CLIENT_AUTH_TOKEN` | Internal authentication token |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+| `TELEGRAM_WEBHOOK_SECRET` | (Optional) Webhook secret for security verification |
 | `QUEUE_URL` | SQS queue URL (auto-created) |
 
 ## Tech Stack
@@ -105,21 +120,23 @@ sam deploy --guided
 - **Runtime**: Python 3.12 + Claude Agent SDK
 - **Computing**: AWS Lambda (ARM64)
 - **Storage**: S3 + DynamoDB
-- **Message Queue**: AWS SQS (Standard Queue + DLQ)
+- **Message Queue**: AWS SQS (FIFO Queue + DLQ)
 - **AI**: Claude via Amazon Bedrock
 - **Orchestration**: AWS SAM
 - **Integration**: Telegram Bot API + MCP
 
-## SQS Async Architecture
+## SQS FIFO Async Architecture
 
 **Problem Solved**: Telegram Webhook times out and retries after ~27s, while Agent processing may take 30-70s, causing duplicate responses.
 
 **Solution**:
-1. Producer Lambda receives Webhook, writes to SQS, returns 200 immediately (<1s)
+1. Producer Lambda receives Webhook, writes to SQS FIFO, returns 200 immediately (<1s)
 2. Consumer Lambda consumes from SQS, calls Agent Server, sends response to Telegram
-3. Retry 3 times on failure, then move to dead letter queue (DLQ)
+3. FIFO queue ensures message ordering within same session (MessageGroupId = chat_id:thread_id)
+4. Retry 3 times on failure, then move to dead letter queue (DLQ)
 
 **Queue Configuration**:
+- FifoQueue: true (ordered delivery per MessageGroupId)
 - VisibilityTimeout: 900s (= Lambda timeout)
 - maxReceiveCount: 3 (retry 3 times)
 - DLQ Alarm: CloudWatch alarm triggers when messages enter DLQ
@@ -136,6 +153,25 @@ sam deploy --guided
 - `conversation.jsonl` - Conversation history (required for restoration)
 - `debug.txt` - Debug logs
 - `todos.json` - Task status
+
+## Configure Commands
+
+Edit `agent-sdk-client/config.toml`:
+
+```toml
+[agent_commands]
+commands = ["/custom-skill", "/hello-world"]
+
+[local_commands]
+# Static response
+help = { type = "static", response = "Hello World" }
+# Handler function
+newchat = { type = "handler", handler = "newchat" }
+debug = { type = "handler", handler = "debug" }
+
+[security]
+user_whitelist = ["all"]  # or [123456789, 987654321]
+```
 
 ## Configure SubAgents
 
@@ -173,6 +209,17 @@ Edit `agent-sdk-server/claude-config/mcp.json`, supporting two types:
 
 Examples include AWS knowledge base MCP servers. Refer to existing configurations to add more MCP servers.
 
+## Forum Group Setup
+
+For Telegram Forum groups:
+
+1. Enable Topics feature in group settings
+2. Add Bot to group (must be by whitelisted user)
+3. Promote Bot to admin with "Manage Topics" permission
+4. Use `/newchat <message>` to create new conversation topics
+
+See [docs/forum-group-security.md](docs/forum-group-security.md) for details.
+
 ## Quick Start Examples
 
 The project includes the following example components; follow these examples to add other components:
@@ -202,27 +249,39 @@ MIT
 ## 架构
 
 ```
-Telegram User → Bot API → API Gateway → Producer Lambda → SQS Queue → Consumer Lambda
-                                              ↓                            ↓
-                                        立即返回 200              agent-server Lambda
-                                                                        ↓
+Telegram User → Bot API → API Gateway → Producer Lambda → SQS FIFO Queue → Consumer Lambda
+                                              ↓                                  ↓
+                                        立即返回 200                      agent-server Lambda
+                                                                                ↓
                                               DynamoDB (Session映射) + S3 (Session文件) + Bedrock (Claude)
 ```
 
 **核心设计**：
 - 采用 Claude Agent SDK 官方推荐的 Hybrid Sessions 模式
-- **SQS 异步架构**：Producer 立即返回 200 给 Telegram，Consumer 异步处理请求
+- **SQS FIFO 异步架构**：Producer 立即返回 200 给 Telegram，Consumer 异步处理请求，保证消息顺序
 
 ## 特性
 
 - **Session 持久化**：DynamoDB 存储映射，S3 存储对话历史，支持跨请求恢复
 - **多租户隔离**：基于 Telegram chat_id + thread_id 实现客户端隔离
+- **Forum 群组支持**：基于 Topic 的对话隔离，自动预检权限
+- **用户白名单**：控制私聊和群组邀请权限
 - **SubAgent 支持**：可配置多个专业 Agent（如 AWS 支持），包含示例实现
 - **Skills 支持**：可复用的技能模块，包含 hello-world 示例
-- **MCP 集成**：支持 HTTP 和本地命令类型的 MCP 服务器
+- **MCP 集成**：支持 HTTP 和本地命令类型的 MCP 服务器 (Node.js 20+)
+- **安全验证**：支持 Telegram Webhook 密钥验证 (HMAC)
 - **自动清理**：25天 TTL + S3 生命周期管理
-- **SQS 队列**：异步处理 + 自动重试 + 死信队列
+- **SQS FIFO 队列**：有序异步处理 + 自动重试 + 死信队列
 - **快速开始**：提供示例 Skill/SubAgent/MCP 配置，可按照示例添加其他组件
+
+## 命令
+
+| 命令 | 说明 |
+|------|------|
+| `/newchat <消息>` | 在 Forum 群组中创建新 Topic 开始对话 |
+| `/debug` | 下载当前会话文件 (conversation.jsonl, debug.txt, todos.json) |
+| `/start` | 欢迎消息 (私聊) |
+| `/help` | 显示帮助信息 |
 
 ## 项目结构
 
@@ -241,7 +300,9 @@ Telegram User → Bot API → API Gateway → Producer Lambda → SQS Queue → 
 ├── agent-sdk-client/          # Telegram客户端 (ZIP部署)
 │   ├── handler.py             # Producer: Webhook接收，写入SQS
 │   ├── consumer.py            # Consumer: SQS消费，调用Agent
-│   └── config.py              # 配置管理
+│   ├── config.py              # 配置管理
+│   ├── config.toml            # 命令配置
+│   └── security.py            # 安全工具
 │
 ├── docs/                      # 文档
 │   └── anthropic-agent-sdk-official/  # SDK官方文档参考
@@ -283,6 +344,7 @@ sam deploy --guided
 | `BEDROCK_SECRET_ACCESS_KEY` | Bedrock密钥 |
 | `SDK_CLIENT_AUTH_TOKEN` | 内部认证Token |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+| `TELEGRAM_WEBHOOK_SECRET` | (可选) Webhook密钥验证 |
 | `QUEUE_URL` | SQS队列URL（自动创建） |
 
 ## 技术栈
@@ -290,21 +352,23 @@ sam deploy --guided
 - **Runtime**: Python 3.12 + Claude Agent SDK
 - **计算**: AWS Lambda (ARM64)
 - **存储**: S3 + DynamoDB
-- **消息队列**: AWS SQS (Standard Queue + DLQ)
+- **消息队列**: AWS SQS (FIFO Queue + DLQ)
 - **AI**: Claude via Amazon Bedrock
 - **编排**: AWS SAM
 - **集成**: Telegram Bot API + MCP
 
-## SQS 异步架构
+## SQS FIFO 异步架构
 
 **解决的问题**：Telegram Webhook 在 ~27s 后超时重试，而 Agent 处理可能需要 30-70s，导致重复响应。
 
 **解决方案**：
-1. Producer Lambda 接收 Webhook，写入 SQS，立即返回 200（<1s）
+1. Producer Lambda 接收 Webhook，写入 SQS FIFO，立即返回 200（<1s）
 2. Consumer Lambda 从 SQS 消费，调用 Agent Server，发送响应给 Telegram
-3. 失败重试 3 次，最终失败进入死信队列（DLQ）
+3. FIFO 队列保证同一会话内消息顺序 (MessageGroupId = chat_id:thread_id)
+4. 失败重试 3 次，最终失败进入死信队列（DLQ）
 
 **队列配置**：
+- FifoQueue: true（按 MessageGroupId 有序投递）
 - VisibilityTimeout: 900s（= Lambda 超时）
 - maxReceiveCount: 3（重试 3 次）
 - DLQ 告警：消息进入 DLQ 时触发 CloudWatch 告警
@@ -321,6 +385,25 @@ sam deploy --guided
 - `conversation.jsonl` - 对话历史（恢复必需）
 - `debug.txt` - 调试日志
 - `todos.json` - 任务状态
+
+## 配置命令
+
+编辑 `agent-sdk-client/config.toml`：
+
+```toml
+[agent_commands]
+commands = ["/custom-skill", "/hello-world"]
+
+[local_commands]
+# 静态回复
+help = { type = "static", response = "Hello World" }
+# 处理函数
+newchat = { type = "handler", handler = "newchat" }
+debug = { type = "handler", handler = "debug" }
+
+[security]
+user_whitelist = ["all"]  # 或 [123456789, 987654321]
+```
 
 ## 配置 SubAgent
 
@@ -357,6 +440,17 @@ sam deploy --guided
 - **命令行 MCP**：通过 `command` 和 `args` 启动本地 MCP 服务器
 
 示例中配置了 AWS 知识库 MCP 服务器。可参考现有配置添加更多 MCP 服务器。
+
+## Forum 群组设置
+
+在 Telegram Forum 群组中使用：
+
+1. 在群组设置中启用 Topics 功能
+2. 将 Bot 添加到群组（必须由白名单用户添加）
+3. 将 Bot 提升为管理员，授予「管理 Topics」权限
+4. 使用 `/newchat <消息>` 创建新对话 Topic
+
+详见 [docs/forum-group-security.md](docs/forum-group-security.md)。
 
 ## 快速开始示例
 

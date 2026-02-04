@@ -1,4 +1,6 @@
-# 重构 SDK Client 为 SQS 异步架构
+# 重构 SDK Client 为 SQS FIFO 异步架构
+
+> **注意**: 本文档为历史设计文档。v0.3.0 已将队列升级为 FIFO 队列以保证消息顺序。
 
 ## 问题分析
 
@@ -191,3 +193,29 @@ Resources:
 - Telegram 用户可能极少数情况下收到重复响应
 - Agent Server 会为同一个问题执行两次
 - 如不可接受，可保留 DynamoDB 去重 (在 Consumer 端检查)
+
+---
+
+## v0.3.0 更新: FIFO 队列升级
+
+### 升级原因
+Standard 队列无法保证同一会话内的消息顺序，可能导致:
+- 用户连续发送消息时，后发的消息先被处理
+- 状态覆盖和对话混乱
+
+### FIFO 队列配置
+```yaml
+TaskQueue:
+  Type: AWS::SQS::Queue
+  Properties:
+    QueueName: !Sub '${AWS::StackName}-TaskQueue.fifo'
+    FifoQueue: true
+    ContentBasedDeduplication: false
+    DeduplicationScope: messageGroup
+    FifoThroughputLimit: perMessageGroupId
+```
+
+### 关键参数
+- **MessageGroupId**: `chat_id:thread_id` - 同一会话内消息有序
+- **MessageDeduplicationId**: `chat_id-message_id-uuid` - 允许重试处理
+- **FifoThroughputLimit**: `perMessageGroupId` - 不同会话可并行处理
