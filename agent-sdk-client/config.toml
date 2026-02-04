@@ -7,8 +7,15 @@ commands = [
 
 [local_commands]
 # Local-only commands handled by the client
-help = "Hello World"
-newchat = "创建新对话"
+# Supports two formats:
+#   - Legacy: help = "static response text"
+#   - New: help = { type = "static", response = "text" }
+#   - Handler: newchat = { type = "handler", handler = "newchat" }
+
+help = { type = "static", response = "Hello World" }
+newchat = { type = "handler", handler = "newchat" }
+start = { type = "handler", handler = "start" }
+debug = { type = "handler", handler = "debug" }
 
 [security]
 # User IDs allowed to add bot to groups and send private messages.

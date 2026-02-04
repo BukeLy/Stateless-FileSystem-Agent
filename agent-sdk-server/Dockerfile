@@ -7,11 +7,18 @@ WORKDIR ${LAMBDA_TASK_ROOT}
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN ln -s /usr/local/bin/uv /usr/local/bin/uvx
 
-# Install Claude Code CLI (npm package, requires nodejs)
+# Install Node.js 20+ (required for MCP's undici dependency)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3016,DL3041
-RUN dnf install -y nodejs npm && \
+RUN curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - && \
+    dnf install -y nodejs && \
     dnf clean all && \
     npm install -g @anthropic-ai/claude-code
+SHELL ["/bin/sh", "-c"]
+
+# Fix npm cache permissions for Lambda
+RUN mkdir -p /tmp/.npm && chmod -R 777 /tmp/.npm
+ENV npm_config_cache=/tmp/.npm
 
 # Install Python dependencies
 RUN uv pip install --system boto3 claude-agent-sdk
@@ -29,13 +36,14 @@ RUN chmod -R 755 /opt/claude-config/
 COPY claude-config/skills/ /opt/claude-skills/
 RUN chmod -R 755 /opt/claude-skills/
 
-# Create ~/.claude and ~/.aws directories and ensure writable
-RUN mkdir -p /root/.claude/projects /root/.claude/debug /root/.claude/todos /root/.aws && \
-    touch /root/.claude.json && \
-    chmod -R 777 /root/.claude /root/.claude.json /root/.aws
-
-ENV HOME=/root
-# Redirect cache to /tmp (Lambda only allows writes to /tmp)
+# Lambda only allows writes to /tmp
+# Set HOME=/tmp so:
+# - mcp-remote writes to /tmp/.mcp-auth/ instead of /root/.mcp-auth/
+# - Claude SDK writes to /tmp/.claude/ instead of /root/.claude/
+# - AWS SDK reads from /tmp/.aws/ instead of /root/.aws/
+# Directories are created at runtime in setup_lambda_environment()
+ENV HOME=/tmp
 ENV XDG_CACHE_HOME=/tmp/.cache
+ENV npm_config_cache=/tmp/.npm
 
 CMD ["handler.lambda_handler"]
